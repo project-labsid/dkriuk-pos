@@ -1,0 +1,273 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ===================== USER & AUTH =====================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  phone         String?
+  avatar        String?
+  role          String    @default("cashier") // super_admin, admin, cashier
+  branchId      String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  branch        Branch?   @relation(fields: [branchId], references: [id])
+  transactions  Transaction[]
+  activityLogs  ActivityLog[]
+  purchases     Purchase[]
+  stockAdjustments StockAdjustment[]
+}
+
+// ===================== BRANCH =====================
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  phone     String?
+  email     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  products          Product[]
+  transactions      Transaction[]
+  purchases         Purchase[]
+  stockAdjustments  StockAdjustment[]
+}
+
+// ===================== CATEGORY =====================
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  description String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products   Product[]
+  taxSettings TaxSetting[]
+}
+
+// ===================== SUPPLIER =====================
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchases Purchase[]
+}
+
+// ===================== CUSTOMER =====================
+
+model Customer {
+  id          String   @id @default(cuid())
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  memberPoint Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transactions Transaction[]
+}
+
+// ===================== PRODUCT =====================
+
+model Product {
+  id            String   @id @default(cuid())
+  name          String
+  barcode       String?  @unique
+  sku           String?
+  categoryId    String?
+  unit          String   @default("pcs")
+  costPrice     Float    @default(0)
+  sellPrice     Float    @default(0)
+  stock         Int      @default(0)
+  minStock      Int      @default(5)
+  image         String?
+  isActive      Boolean  @default(true)
+  branchId      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  category      Category?  @relation(fields: [categoryId], references: [id])
+  branch        Branch?    @relation(fields: [branchId], references: [id])
+  transactionItems  TransactionItem[]
+  purchaseItems     PurchaseItem[]
+  stockAdjustments  StockAdjustment[]
+}
+
+// ===================== TRANSACTION =====================
+
+model Transaction {
+  id              String   @id @default(cuid())
+  invoiceNumber   String   @unique
+  userId          String
+  customerId      String?
+  branchId        String?
+  type            String   @default("sale") // sale, refund
+  status          String   @default("completed") // pending, completed, cancelled, held
+  subtotal        Float    @default(0)
+  discountAmount  Float    @default(0)
+  taxAmount       Float    @default(0)
+  serviceCharge   Float    @default(0)
+  grandTotal      Float    @default(0)
+  paidAmount      Float    @default(0)
+  changeAmount    Float    @default(0)
+  paymentMethod   String   @default("cash")
+  paymentDetails  String?  // JSON string for multi-payment
+  notes           String?
+  heldAt         DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id])
+  customer        Customer? @relation(fields: [customerId], references: [id])
+  branch          Branch?   @relation(fields: [branchId], references: [id])
+  items           TransactionItem[]
+}
+
+// ===================== TRANSACTION ITEM =====================
+
+model TransactionItem {
+  id            String   @id @default(cuid())
+  transactionId String
+  productId     String
+  productName   String
+  quantity      Int
+  price         Float
+  costPrice     Float    @default(0)
+  discount      Float    @default(0)
+  total         Float
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  product       Product     @relation(fields: [productId], references: [id])
+}
+
+// ===================== PURCHASE =====================
+
+model Purchase {
+  id            String   @id @default(cuid())
+  invoiceNumber String   @unique
+  supplierId    String
+  userId        String
+  branchId      String?
+  totalAmount   Float    @default(0)
+  status        String   @default("received") // pending, received, cancelled
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  supplier      Supplier  @relation(fields: [supplierId], references: [id])
+  user          User      @relation(fields: [userId], references: [id])
+  branch        Branch?   @relation(fields: [branchId], references: [id])
+  items         PurchaseItem[]
+}
+
+// ===================== PURCHASE ITEM =====================
+
+model PurchaseItem {
+  id          String   @id @default(cuid())
+  purchaseId  String
+  productId   String
+  quantity    Int
+  costPrice   Float
+  total       Float
+  createdAt   DateTime @default(now())
+
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id])
+}
+
+// ===================== STOCK ADJUSTMENT =====================
+
+model StockAdjustment {
+  id            String   @id @default(cuid())
+  productId     String
+  userId        String
+  branchId      String?
+  type          String   // in, out, adjustment, opname
+  quantity      Int
+  previousStock Int
+  newStock      Int
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  product       Product  @relation(fields: [productId], references: [id])
+  user          User      @relation(fields: [userId], references: [id])
+  branch        Branch?   @relation(fields: [branchId], references: [id])
+}
+
+// ===================== STORE SETTINGS =====================
+
+model StoreSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+// ===================== TAX SETTING =====================
+
+model TaxSetting {
+  id            String   @id @default(cuid())
+  isEnabled     Boolean  @default(false)
+  percentage    Float    @default(11)
+  mode          String   @default("exclude") // include, exclude
+  applyToAll    Boolean  @default(true)
+  categoryId    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  category      Category? @relation(fields: [categoryId], references: [id])
+}
+
+// ===================== SERVICE CHARGE SETTING =====================
+
+model ServiceChargeSetting {
+  id          String   @id @default(cuid())
+  isEnabled   Boolean  @default(false)
+  percentage  Float    @default(5)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ===================== ACTIVITY LOG =====================
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  module    String
+  details   String?  // JSON
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+}

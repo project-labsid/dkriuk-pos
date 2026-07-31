@@ -1,0 +1,793 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback } from 'react';
+     4→import { motion } from 'framer-motion';
+     5→import {
+     6→  useQuery,
+     7→  useMutation,
+     8→  useQueryClient,
+     9→} from '@tanstack/react-query';
+    10→import {
+    11→  useReactTable,
+    12→  getCoreRowModel,
+    13→  getPaginationRowModel,
+    14→  flexRender,
+    15→  type ColumnDef,
+    16→} from '@tanstack/react-table';
+    17→import { z } from 'zod';
+    18→import { zodResolver } from '@hookform/resolvers/zod';
+    19→import { useForm } from 'react-hook-form';
+    20→import { toast } from 'sonner';
+    21→import {
+    22→  Plus,
+    23→  Search,
+    24→  Pencil,
+    25→  Trash2,
+    26→  ChevronLeft,
+    27→  ChevronRight,
+    28→  Loader2,
+    29→  Truck,
+    30→} from 'lucide-react';
+    31→import type { Supplier, PaginatedResponse } from '@/types';
+    32→
+    33→import { Button } from '@/components/ui/button';
+    34→import { Input } from '@/components/ui/input';
+    35→import { Badge } from '@/components/ui/badge';
+    36→import { Skeleton } from '@/components/ui/skeleton';
+    37→import { Switch } from '@/components/ui/switch';
+    38→import { Label } from '@/components/ui/label';
+    39→import {
+    40→  Table,
+    41→  TableHeader,
+    42→  TableBody,
+    43→  TableHead,
+    44→  TableRow,
+    45→  TableCell,
+    46→} from '@/components/ui/table';
+    47→import {
+    48→  Dialog,
+    49→  DialogContent,
+    50→  DialogHeader,
+    51→  DialogTitle,
+    52→  DialogDescription,
+    53→  DialogFooter,
+    54→} from '@/components/ui/dialog';
+    55→import {
+    56→  AlertDialog,
+    57→  AlertDialogContent,
+    58→  AlertDialogHeader,
+    59→  AlertDialogTitle,
+    60→  AlertDialogDescription,
+    61→  AlertDialogFooter,
+    62→  AlertDialogCancel,
+    63→  AlertDialogAction,
+    64→} from '@/components/ui/alert-dialog';
+    65→import {
+    66→  DropdownMenu,
+    67→  DropdownMenuTrigger,
+    68→  DropdownMenuContent,
+    69→  DropdownMenuItem,
+    70→  DropdownMenuSeparator,
+    71→} from '@/components/ui/dropdown-menu';
+    72→import {
+    73→  Form,
+    74→  FormControl,
+    75→  FormField,
+    76→  FormItem,
+    77→  FormLabel,
+    78→  FormMessage,
+    79→} from '@/components/ui/form';
+    80→import {
+    81→  Sheet,
+    82→  SheetContent,
+    83→  SheetHeader,
+    84→  SheetTitle,
+    85→  SheetDescription,
+    86→  SheetFooter,
+    87→} from '@/components/ui/sheet';
+    88→import { Textarea } from '@/components/ui/textarea';
+    89→import {
+    90→  Select,
+    91→  SelectContent,
+    92→  SelectItem,
+    93→  SelectTrigger,
+    94→  SelectValue,
+    95→} from '@/components/ui/select';
+    96→
+    97→// ─── Form Schema ───────────────────────────────────────────────────────────────
+    98→
+    99→const supplierFormSchema = z.object({
+   100→  name: z.string().min(1, 'Nama supplier wajib diisi'),
+   101→  phone: z.string().optional().or(z.literal('')),
+   102→  email: z.string().email('Email tidak valid').optional().or(z.literal('')),
+   103→  address: z.string().optional().or(z.literal('')),
+   104→  isActive: z.boolean().default(true),
+   105→});
+   106→
+   107→type SupplierFormData = z.infer<typeof supplierFormSchema>;
+   108→
+   109→// ─── Animation Variants ──────────────────────────────────────────────────────
+   110→
+   111→const containerVariants = {
+   112→  hidden: { opacity: 0 },
+   113→  visible: {
+   114→    opacity: 1,
+   115→    transition: { staggerChildren: 0.08 },
+   116→  },
+   117→};
+   118→
+   119→const itemVariants = {
+   120→  hidden: { opacity: 0, y: 20 },
+   121→  visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
+   122→};
+   123→
+   124→// ─── Status Badge ─────────────────────────────────────────────────────────────
+   125→
+   126→function getStatusBadge(isActive: boolean) {
+   127→  if (isActive) {
+   128→    return (
+   129→      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100">
+   130→        Aktif
+   131→      </Badge>
+   132→    );
+   133→  }
+   134→  return (
+   135→    <Badge className="bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
+   136→      Tidak Aktif
+   137→    </Badge>
+   138→  );
+   139→}
+   140→
+   141→// ─── Main Component ────────────────────────────────────────────────────────────
+   142→
+   143→export default function SuppliersPage() {
+   144→  const queryClient = useQueryClient();
+   145→
+   146→  // ── Filter State ────────────────────────────────────────────────────────────
+   147→  const [search, setSearch] = useState('');
+   148→  const [page, setPage] = useState(1);
+   149→  const [perPage, setPerPage] = useState(10);
+   150→
+   151→  // ── Dialog State ────────────────────────────────────────────────────────────
+   152→  const [formOpen, setFormOpen] = useState(false);
+   153→  const [deleteOpen, setDeleteOpen] = useState(false);
+   154→  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+   155→  const [deletingSupplier, setDeletingSupplier] = useState<Supplier | null>(null);
+   156→
+   157→  // ── Form ───────────────────────────────────────────────────────────────────
+   158→  const form = useForm<SupplierFormData>({
+   159→    resolver: zodResolver(supplierFormSchema),
+   160→    defaultValues: {
+   161→      name: '',
+   162→      phone: '',
+   163→      email: '',
+   164→      address: '',
+   165→      isActive: true,
+   166→    },
+   167→  });
+   168→
+   169→  // ── Query ─────────────────────────────────────────────────────────────────
+   170→
+   171→  const suppliersQuery = useQuery<PaginatedResponse<Supplier>>({
+   172→    queryKey: ['suppliers', page, perPage, search],
+   173→    queryFn: async () => {
+   174→      const params = new URLSearchParams({
+   175→        page: String(page),
+   176→        perPage: String(perPage),
+   177→      });
+   178→      if (search) params.set('search', search);
+   179→      const res = await fetch(`/api/suppliers?${params.toString()}`);
+   180→      if (!res.ok) throw new Error('Gagal memuat supplier');
+   181→      return res.json();
+   182→    },
+   183→  });
+   184→
+   185→  // ── Mutations ──────────────────────────────────────────────────────────────
+   186→
+   187→  const createMutation = useMutation({
+   188→    mutationFn: async (data: SupplierFormData) => {
+   189→      const payload: Record<string, unknown> = { ...data };
+   190→      if (!payload.phone) delete payload.phone;
+   191→      if (!payload.email) delete payload.email;
+   192→      if (!payload.address) delete payload.address;
+   193→      const res = await fetch('/api/suppliers', {
+   194→        method: 'POST',
+   195→        headers: { 'Content-Type': 'application/json' },
+   196→        body: JSON.stringify(payload),
+   197→      });
+   198→      if (!res.ok) {
+   199→        const err = await res.json();
+   200→        throw new Error(err.error || 'Gagal menambah supplier');
+   201→      }
+   202→      return res.json();
+   203→    },
+   204→    onSuccess: () => {
+   205→      toast.success('Supplier berhasil ditambahkan');
+   206→      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+   207→      closeFormDialog();
+   208→    },
+   209→    onError: (error) => {
+   210→      toast.error(error.message);
+   211→    },
+   212→  });
+   213→
+   214→  const updateMutation = useMutation({
+   215→    mutationFn: async (data: SupplierFormData) => {
+   216→      if (!editingSupplier) return;
+   217→      const payload: Record<string, unknown> = { ...data };
+   218→      if (!payload.phone) payload.phone = null;
+   219→      if (!payload.email) payload.email = null;
+   220→      if (!payload.address) payload.address = null;
+   221→      const res = await fetch(`/api/suppliers/${editingSupplier.id}`, {
+   222→        method: 'PUT',
+   223→        headers: { 'Content-Type': 'application/json' },
+   224→        body: JSON.stringify(payload),
+   225→      });
+   226→      if (!res.ok) {
+   227→        const err = await res.json();
+   228→        throw new Error(err.error || 'Gagal memperbarui supplier');
+   229→      }
+   230→      return res.json();
+   231→    },
+   232→    onSuccess: () => {
+   233→      toast.success('Supplier berhasil diperbarui');
+   234→      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+   235→      closeFormDialog();
+   236→    },
+   237→    onError: (error) => {
+   238→      toast.error(error.message);
+   239→    },
+   240→  });
+   241→
+   242→  const deleteMutation = useMutation({
+   243→    mutationFn: async (id: string) => {
+   244→      const res = await fetch(`/api/suppliers/${id}`, {
+   245→        method: 'DELETE',
+   246→      });
+   247→      if (!res.ok) {
+   248→        const err = await res.json();
+   249→        throw new Error(err.error || 'Gagal menghapus supplier');
+   250→      }
+   251→      return res.json();
+   252→    },
+   253→    onSuccess: () => {
+   254→      toast.success('Supplier berhasil dihapus');
+   255→      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+   256→      setDeleteOpen(false);
+   257→      setDeletingSupplier(null);
+   258→    },
+   259→    onError: (error) => {
+   260→      toast.error(error.message);
+   261→    },
+   262→  });
+   263→
+   264→  // ── Derived Data ────────────────────────────────────────────────────────────
+   265→
+   266→  const suppliers = suppliersQuery.data?.data ?? [];
+   267→  const totalSuppliers = suppliersQuery.data?.total ?? 0;
+   268→  const totalPages = suppliersQuery.data?.totalPages ?? 1;
+   269→  const isLoading = suppliersQuery.isLoading || suppliersQuery.isFetching;
+   270→  const isMutating = createMutation.isPending || updateMutation.isPending;
+   271→
+   272→  const startItem = (page - 1) * perPage + 1;
+   273→  const endItem = Math.min(page * perPage, totalSuppliers);
+   274→
+   275→  // ── Handlers ────────────────────────────────────────────────────────────────
+   276→
+   277→  const openAddDialog = useCallback(() => {
+   278→    setEditingSupplier(null);
+   279→    form.reset({
+   280→      name: '',
+   281→      phone: '',
+   282→      email: '',
+   283→      address: '',
+   284→      isActive: true,
+   285→    });
+   286→    setFormOpen(true);
+   287→  }, [form]);
+   288→
+   289→  const openEditDialog = useCallback(
+   290→    (supplier: Supplier) => {
+   291→      setEditingSupplier(supplier);
+   292→      form.reset({
+   293→        name: supplier.name,
+   294→        phone: supplier.phone ?? '',
+   295→        email: supplier.email ?? '',
+   296→        address: supplier.address ?? '',
+   297→        isActive: supplier.isActive,
+   298→      });
+   299→      setFormOpen(true);
+   300→    },
+   301→    [form]
+   302→  );
+   303→
+   304→  const openDeleteDialog = useCallback((supplier: Supplier) => {
+   305→    setDeletingSupplier(supplier);
+   306→    setDeleteOpen(true);
+   307→  }, []);
+   308→
+   309→  const closeFormDialog = useCallback(() => {
+   310→    setFormOpen(false);
+   311→    setEditingSupplier(null);
+   312→  }, []);
+   313→
+   314→  const onSubmitForm = useCallback(
+   315→    (data: SupplierFormData) => {
+   316→      if (editingSupplier) {
+   317→        updateMutation.mutate(data);
+   318→      } else {
+   319→        createMutation.mutate(data);
+   320→      }
+   321→    },
+   322→    [editingSupplier, createMutation, updateMutation]
+   323→  );
+   324→
+   325→  const handleDeleteConfirm = useCallback(() => {
+   326→    if (deletingSupplier) {
+   327→      deleteMutation.mutate(deletingSupplier.id);
+   328→    }
+   329→  }, [deletingSupplier, deleteMutation]);
+   330→
+   331→  const handleSearchChange = useCallback((value: string) => {
+   332→    setSearch(value);
+   333→    setPage(1);
+   334→  }, []);
+   335→
+   336→  const handlePerPageChange = useCallback((value: string) => {
+   337→    setPerPage(Number(value));
+   338→    setPage(1);
+   339→  }, []);
+   340→
+   341→  // ── Table Columns ─────────────────────────────────────────────────────────
+   342→
+   343→  const columns = useMemo<ColumnDef<Supplier>[]>(() => [
+   344→      {
+   345→        accessorKey: 'index',
+   346→        header: 'No',
+   347→        size: 50,
+   348→        cell: ({ row }) => (
+   349→          <span className="text-muted-foreground text-sm">{row.index + 1}</span>
+   350→        ),
+   351→      },
+   352→      {
+   353→        accessorKey: 'name',
+   354→        header: 'Nama',
+   355→        cell: ({ row }) => (
+   356→          <div className="font-medium">{row.original.name}</div>
+   357→        ),
+   358→      },
+   359→      {
+   360→        accessorKey: 'phone',
+   361→        header: 'Telepon',
+   362→        size: 130,
+   363→        cell: ({ row }) => (
+   364→          <span className="text-muted-foreground text-sm">
+   365→            {row.original.phone || '-'}
+   366→          </span>
+   367→        ),
+   368→      },
+   369→      {
+   370→        accessorKey: 'email',
+   371→        header: 'Email',
+   372→        size: 180,
+   373→        cell: ({ row }) => (
+   374→          <span className="text-muted-foreground text-sm truncate block max-w-[180px]">
+   375→            {row.original.email || '-'}
+   376→          </span>
+   377→        ),
+   378→      },
+   379→      {
+   380→        accessorKey: 'address',
+   381→        header: 'Alamat',
+   382→        size: 200,
+   383→        cell: ({ row }) => (
+   384→          <span className="text-muted-foreground text-sm truncate block max-w-[200px]">
+   385→            {row.original.address || '-'}
+   386→          </span>
+   387→        ),
+   388→      },
+   389→      {
+   390→        accessorKey: 'isActive',
+   391→        header: 'Status',
+   392→        size: 120,
+   393→        cell: ({ row }) => getStatusBadge(row.original.isActive),
+   394→      },
+   395→      {
+   396→        id: 'actions',
+   397→        header: 'Aksi',
+   398→        size: 80,
+   399→        cell: ({ row }) => (
+   400→          <DropdownMenu>
+   401→            <DropdownMenuTrigger asChild>
+   402→              <Button variant="ghost" size="icon" className="size-8">
+   403→                <Pencil className="size-4" />
+   404→                <span className="sr-only">Aksi</span>
+   405→              </Button>
+   406→            </DropdownMenuTrigger>
+   407→            <DropdownMenuContent align="end">
+   408→              <DropdownMenuItem onClick={() => openEditDialog(row.original)}>
+   409→                <Pencil className="size-4 mr-2" />
+   410→                Edit
+   411→              </DropdownMenuItem>
+   412→              <DropdownMenuSeparator />
+   413→              <DropdownMenuItem
+   414→                onClick={() => openDeleteDialog(row.original)}
+   415→                className="text-destructive focus:text-destructive"
+   416→              >
+   417→                <Trash2 className="size-4 mr-2" />
+   418→                Hapus
+   419→              </DropdownMenuItem>
+   420→            </DropdownMenuContent>
+   421→          </DropdownMenu>
+   422→        ),
+   423→      },
+   424→    ],
+   425→    [openEditDialog, openDeleteDialog]
+   426→  );
+   427→
+   428→  // ── Table ─────────────────────────────────────────────────────────────────
+   429→
+   430→  const table = useReactTable({
+   431→    data: suppliers,
+   432→    columns,
+   433→    getCoreRowModel: getCoreRowModel(),
+   434→    getPaginationRowModel: getPaginationRowModel(),
+   435→    manualPagination: true,
+   436→    pageCount: totalPages,
+   437→    state: {
+   438→      pagination: { pageIndex: page - 1, pageSize: perPage },
+   439→    },
+   440→  });
+   441→
+   442→  // ── Form Content ───────────────────────────────────────────────────────────
+   443→
+   444→  const formContent = (
+   445→    <Form {...form}>
+   446→      <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
+   447→        <FormField
+   448→          control={form.control}
+   449→          name="name"
+   450→          render={({ field }) => (
+   451→            <FormItem>
+   452→              <FormLabel>Nama Supplier</FormLabel>
+   453→              <FormControl>
+   454→                <Input placeholder="Masukkan nama supplier" {...field} />
+   455→              </FormControl>
+   456→              <FormMessage />
+   457→            </FormItem>
+   458→          )}
+   459→        />
+   460→        <FormField
+   461→          control={form.control}
+   462→          name="phone"
+   463→          render={({ field }) => (
+   464→            <FormItem>
+   465→              <FormLabel>Telepon</FormLabel>
+   466→              <FormControl>
+   467→                <Input placeholder="Nomor telepon supplier" {...field} />
+   468→              </FormControl>
+   469→              <FormMessage />
+   470→            </FormItem>
+   471→          )}
+   472→        />
+   473→        <FormField
+   474→          control={form.control}
+   475→          name="email"
+   476→          render={({ field }) => (
+   477→            <FormItem>
+   478→              <FormLabel>Email</FormLabel>
+   479→              <FormControl>
+   480→                <Input
+   481→                  type="email"
+   482→                  placeholder="Email supplier (opsional)"
+   483→                  {...field}
+   484→                />
+   485→              </FormControl>
+   486→              <FormMessage />
+   487→            </FormItem>
+   488→          )}
+   489→        />
+   490→        <FormField
+   491→          control={form.control}
+   492→          name="address"
+   493→          render={({ field }) => (
+   494→            <FormItem>
+   495→              <FormLabel>Alamat</FormLabel>
+   496→              <FormControl>
+   497→                <Textarea placeholder="Alamat lengkap supplier" {...field} />
+   498→              </FormControl>
+   499→              <FormMessage />
+   500→            </FormItem>
+   501→          )}
+   502→        />
+   503→        <FormField
+   504→          control={form.control}
+   505→          name="isActive"
+   506→          render={({ field }) => (
+   507→            <FormItem className="flex items-center justify-between rounded-lg border p-3">
+   508→              <div className="space-y-0.5">
+   509→                <FormLabel>Status Aktif</FormLabel>
+   510→                <p className="text-muted-foreground text-sm">
+   511→                  Aktifkan supplier untuk digunakan
+   512→                </p>
+   513→              </div>
+   514→              <FormControl>
+   515→                <Switch
+   516→                  checked={field.value}
+   517→                  onCheckedChange={field.onChange}
+   518→                />
+   519→              </FormControl>
+   520→            </FormItem>
+   521→          )}
+   522→        />
+   523→      </form>
+   524→    </Form>
+   525→  );
+   526→
+   527→  // ── Render ─────────────────────────────────────────────────────────────────
+   528→
+   529→  return (
+   530→    <motion.div
+   531→      variants={containerVariants}
+   532→      initial="hidden"
+   533→      animate="visible"
+   534→      className="flex flex-col gap-6 p-4 md:p-6"
+   535→    >
+   536→      {/* ── Header ─────────────────────────────────────────────────────────────── */}
+   537→      <motion.div
+   538→        variants={itemVariants}
+   539→        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+   540→      >
+   541→        <div>
+   542→          <h1 className="text-2xl font-bold tracking-tight">Supplier</h1>
+   543→          <p className="text-muted-foreground text-sm mt-1">
+   544→            Kelola daftar supplier toko Anda
+   545→          </p>
+   546→        </div>
+   547→        <Button onClick={openAddDialog} className="bg-emerald-600 hover:bg-emerald-700">
+   548→          <Plus className="size-4" />
+   549→          Tambah Supplier
+   550→        </Button>
+   551→      </motion.div>
+   552→
+   553→      {/* ── Search & Table ────────────────────────────────────────────────────── */}
+   554→      <motion.div
+   555→        variants={itemVariants}
+   556→        className="border rounded-xl bg-card shadow-sm"
+   557→      >
+   558→        <div className="p-4 border-b">
+   559→          <div className="relative max-w-sm">
+   560→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   561→            <Input
+   562→              placeholder="Cari supplier..."
+   563→              value={search}
+   564→              onChange={(e) => handleSearchChange(e.target.value)}
+   565→              className="pl-9"
+   566→            />
+   567→          </div>
+   568→        </div>
+   569→
+   570→        <div className="overflow-x-auto">
+   571→          <Table>
+   572→            <TableHeader>
+   573→              {table.getHeaderGroups().map((headerGroup) => (
+   574→                <TableRow key={headerGroup.id}>
+   575→                  {headerGroup.headers.map((header) => (
+   576→                    <TableHead key={header.id} style={{ width: header.getSize() }}>
+   577→                      {flexRender(header.column.columnDef.header, header.getContext())}
+   578→                    </TableHead>
+   579→                  ))}
+   580→                </TableRow>
+   581→              ))}
+   582→            </TableHeader>
+   583→            <TableBody>
+   584→              {isLoading ? (
+   585→                Array.from({ length: perPage }).map((_, i) => (
+   586→                  <TableRow key={i}>
+   587→                    <TableCell><Skeleton className="h-4 w-6" /></TableCell>
+   588→                    <TableCell><Skeleton className="h-4 w-[150px]" /></TableCell>
+   589→                    <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
+   590→                    <TableCell><Skeleton className="h-4 w-[140px]" /></TableCell>
+   591→                    <TableCell><Skeleton className="h-4 w-[160px]" /></TableCell>
+   592→                    <TableCell><Skeleton className="h-5 w-[80px] rounded-full" /></TableCell>
+   593→                    <TableCell><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
+   594→                  </TableRow>
+   595→                ))
+   596→              ) : suppliers.length === 0 ? (
+   597→                <TableRow>
+   598→                  <TableCell colSpan={columns.length} className="h-40 text-center">
+   599→                    <div className="flex flex-col items-center justify-center gap-2">
+   600→                      <Truck className="size-10 text-muted-foreground/50" />
+   601→                      <p className="text-muted-foreground text-sm">
+   602→                        {search
+   603→                          ? 'Tidak ada supplier yang sesuai dengan pencarian'
+   604→                          : 'Belum ada supplier. Klik "Tambah Supplier" untuk memulai.'}
+   605→                      </p>
+   606→                    </div>
+   607→                  </TableCell>
+   608→                </TableRow>
+   609→              ) : (
+   610→                table.getRowModel().rows.map((row) => (
+   611→                  <TableRow key={row.id}>
+   612→                    {row.getVisibleCells().map((cell) => (
+   613→                      <TableCell key={cell.id}>
+   614→                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+   615→                      </TableCell>
+   616→                    ))}
+   617→                  </TableRow>
+   618→                ))
+   619→              )}
+   620→            </TableBody>
+   621→          </Table>
+   622→        </div>
+   623→
+   624→        {/* ── Pagination ─────────────────────────────────────────────────────── */}
+   625→        {totalSuppliers > 0 && (
+   626→          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t">
+   627→            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+   628→              <span>
+   629→                Menampilkan {startItem}-{endItem} dari {totalSuppliers}
+   630→              </span>
+   631→              <Select value={String(perPage)} onValueChange={handlePerPageChange}>
+   632→                <SelectTrigger className="w-[70px] h-8">
+   633→                  <SelectValue />
+   634→                </SelectTrigger>
+   635→                <SelectContent>
+   636→                  <SelectItem value="10">10</SelectItem>
+   637→                  <SelectItem value="25">25</SelectItem>
+   638→                  <SelectItem value="50">50</SelectItem>
+   639→                </SelectContent>
+   640→              </Select>
+   641→              <span>per halaman</span>
+   642→            </div>
+   643→            <div className="flex items-center gap-2">
+   644→              <Button
+   645→                variant="outline"
+   646→                size="sm"
+   647→                onClick={() => setPage((p) => Math.max(1, p - 1))}
+   648→                disabled={page <= 1}
+   649→              >
+   650→                <ChevronLeft className="size-4" />
+   651→                <span className="sm:hidden">Sebelumnya</span>
+   652→              </Button>
+   653→              <div className="flex items-center gap-1 text-sm">
+   654→                <span className="px-2 py-1 rounded-md bg-primary text-primary-foreground font-medium">
+   655→                  {page}
+   656→                </span>
+   657→                <span className="text-muted-foreground">dari {totalPages}</span>
+   658→              </div>
+   659→              <Button
+   660→                variant="outline"
+   661→                size="sm"
+   662→                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+   663→                disabled={page >= totalPages}
+   664→              >
+   665→                <span className="sm:hidden">Berikutnya</span>
+   666→                <ChevronRight className="size-4" />
+   667→              </Button>
+   668→            </div>
+   669→          </div>
+   670→        )}
+   671→      </motion.div>
+   672→
+   673→      {/* ── Add Dialog (Desktop) ──────────────────────────────────────────────── */}
+   674→      <Dialog open={formOpen && !editingSupplier} onOpenChange={setFormOpen}>
+   675→        <DialogContent className="sm:max-w-lg">
+   676→          <DialogHeader>
+   677→            <DialogTitle>Tambah Supplier Baru</DialogTitle>
+   678→            <DialogDescription>
+   679→              Isi detail supplier yang akan ditambahkan
+   680→            </DialogDescription>
+   681→          </DialogHeader>
+   682→          {formContent}
+   683→          <DialogFooter className="pt-4">
+   684→            <Button variant="outline" onClick={closeFormDialog} disabled={isMutating}>
+   685→              Batal
+   686→            </Button>
+   687→            <Button
+   688→              type="button"
+   689→              onClick={form.handleSubmit(onSubmitForm)}
+   690→              disabled={isMutating}
+   691→              className="bg-emerald-600 hover:bg-emerald-700"
+   692→            >
+   693→              {isMutating && <Loader2 className="size-4 animate-spin" />}
+   694→              {isMutating ? 'Menyimpan...' : 'Simpan Supplier'}
+   695→            </Button>
+   696→          </DialogFooter>
+   697→        </DialogContent>
+   698→      </Dialog>
+   699→
+   700→      {/* ── Edit Dialog (Desktop) ────────────────────────────────────────────── */}
+   701→      <Dialog open={formOpen && !!editingSupplier} onOpenChange={setFormOpen}>
+   702→        <DialogContent className="sm:max-w-lg">
+   703→          <DialogHeader>
+   704→            <DialogTitle>Edit Supplier</DialogTitle>
+   705→            <DialogDescription>
+   706→              Ubah detail supplier {editingSupplier?.name}
+   707→            </DialogDescription>
+   708→          </DialogHeader>
+   709→          {formContent}
+   710→          <DialogFooter className="pt-4">
+   711→            <Button variant="outline" onClick={closeFormDialog} disabled={isMutating}>
+   712→              Batal
+   713→            </Button>
+   714→            <Button
+   715→              type="button"
+   716→              onClick={form.handleSubmit(onSubmitForm)}
+   717→              disabled={isMutating}
+   718→              className="bg-emerald-600 hover:bg-emerald-700"
+   719→            >
+   720→              {isMutating && <Loader2 className="size-4 animate-spin" />}
+   721→              {isMutating ? 'Menyimpan...' : 'Perbarui Supplier'}
+   722→            </Button>
+   723→          </DialogFooter>
+   724→        </DialogContent>
+   725→      </Dialog>
+   726→
+   727→      {/* ── Add/Edit Sheet (Mobile) ──────────────────────────────────────────── */}
+   728→      <Sheet open={formOpen} onOpenChange={setFormOpen}>
+   729→        <SheetContent side="bottom" className="sm:max-h-[85vh] rounded-t-2xl">
+   730→          <SheetHeader>
+   731→            <SheetTitle>
+   732→              {editingSupplier ? 'Edit Supplier' : 'Tambah Supplier Baru'}
+   733→            </SheetTitle>
+   734→            <SheetDescription>
+   735→              {editingSupplier
+   736→                ? 'Ubah detail supplier'
+   737→                : 'Isi detail supplier yang akan ditambahkan'}
+   738→            </SheetDescription>
+   739→          </SheetHeader>
+   740→          <div className="flex-1 overflow-y-auto px-4 pb-4">
+   741→            {formContent}
+   742→          </div>
+   743→          <SheetFooter className="flex-row gap-2 border-t pt-4">
+   744→            <Button
+   745→              variant="outline"
+   746→              className="flex-1"
+   747→              onClick={closeFormDialog}
+   748→              disabled={isMutating}
+   749→            >
+   750→              Batal
+   751→            </Button>
+   752→            <Button
+   753→              type="button"
+   754→              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+   755→              onClick={form.handleSubmit(onSubmitForm)}
+   756→              disabled={isMutating}
+   757→            >
+   758→              {isMutating && <Loader2 className="size-4 animate-spin" />}
+   759→              {isMutating ? 'Menyimpan...' : 'Simpan'}
+   760→            </Button>
+   761→          </SheetFooter>
+   762→        </SheetContent>
+   763→      </Sheet>
+   764→
+   765→      {/* ── Delete Confirmation Dialog ────────────────────────────────────────── */}
+   766→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+   767→        <AlertDialogContent>
+   768→          <AlertDialogHeader>
+   769→            <AlertDialogTitle>Hapus Supplier?</AlertDialogTitle>
+   770→            <AlertDialogDescription>
+   771→              Supplier <span className="font-semibold">{deletingSupplier?.name}</span>{' '}
+   772→              akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan.
+   773→            </AlertDialogDescription>
+   774→          </AlertDialogHeader>
+   775→          <AlertDialogFooter>
+   776→            <AlertDialogCancel disabled={deleteMutation.isPending}>
+   777→              Batal
+   778→            </AlertDialogCancel>
+   779→            <AlertDialogAction
+   780→              onClick={handleDeleteConfirm}
+   781→              disabled={deleteMutation.isPending}
+   782→              className="bg-destructive hover:bg-destructive/90"
+   783→            >
+   784→              {deleteMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+   785→              {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
+   786→            </AlertDialogAction>
+   787→          </AlertDialogFooter>
+   788→        </AlertDialogContent>
+   789→      </AlertDialog>
+   790→    </motion.div>
+   791→  );
+   792→}
+   793→

@@ -1,0 +1,999 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  useQuery,
+     7→  useMutation,
+     8→  useQueryClient,
+     9→} from '@tanstack/react-query';
+    10→import { z } from 'zod';
+    11→import { zodResolver } from '@hookform/resolvers/zod';
+    12→import { useForm } from 'react-hook-form';
+    13→import { toast } from 'sonner';
+    14→import {
+    15→  Search,
+    16→  ChevronLeft,
+    17→  ChevronRight,
+    18→  Loader2,
+    19→  Package,
+    20→  ArrowDownCircle,
+    21→  ArrowUpCircle,
+    22→  ClipboardCheck,
+    23→  History,
+    24→  CheckCircle2,
+    25→  X,
+    26→} from 'lucide-react';
+    27→import { cn } from '@/lib/utils';
+    28→import type { StockAdjustment, Product, PaginatedResponse } from '@/types';
+    29→
+    30→import { Button } from '@/components/ui/button';
+    31→import { Input } from '@/components/ui/input';
+    32→import { Badge } from '@/components/ui/badge';
+    33→import { Skeleton } from '@/components/ui/skeleton';
+    34→import { Label } from '@/components/ui/label';
+    35→import { Textarea } from '@/components/ui/textarea';
+    36→import {
+    37→  Card,
+    38→  CardContent,
+    39→  CardDescription,
+    40→  CardHeader,
+    41→  CardTitle,
+    42→} from '@/components/ui/card';
+    43→import {
+    44→  Table,
+    45→  TableHeader,
+    46→  TableBody,
+    47→  TableHead,
+    48→  TableRow,
+    49→  TableCell,
+    50→} from '@/components/ui/table';
+    51→import {
+    52→  Select,
+    53→  SelectContent,
+    54→  SelectItem,
+    55→  SelectTrigger,
+    56→  SelectValue,
+    57→} from '@/components/ui/select';
+    58→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    59→import {
+    60→  Command,
+    61→  CommandEmpty,
+    62→  CommandGroup,
+    63→  CommandInput,
+    64→  CommandItem,
+    65→  CommandList,
+    66→} from '@/components/ui/command';
+    67→import {
+    68→  Popover,
+    69→  PopoverContent,
+    70→  PopoverTrigger,
+    71→} from '@/components/ui/popover';
+    72→import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+    73→import {
+    74→  Dialog,
+    75→  DialogContent,
+    76→  DialogHeader,
+    77→  DialogTitle,
+    78→  DialogDescription,
+    79→} from '@/components/ui/dialog';
+    80→
+    81→// ─── Helpers ──────────────────────────────────────────────────────────────────
+    82→
+    83→function formatDate(dateStr: string): string {
+    84→  return new Date(dateStr).toLocaleDateString('id-ID', {
+    85→    day: '2-digit',
+    86→    month: 'short',
+    87→    year: 'numeric',
+    88→    hour: '2-digit',
+    89→    minute: '2-digit',
+    90→  });
+    91→}
+    92→
+    93→function formatRupiah(amount: number): string {
+    94→  return new Intl.NumberFormat('id-ID', {
+    95→    style: 'currency',
+    96→    currency: 'IDR',
+    97→    minimumFractionDigits: 0,
+    98→    maximumFractionDigits: 0,
+    99→  }).format(amount);
+   100→}
+   101→
+   102→const typeConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+   103→  in: { label: 'Masuk', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', icon: <ArrowDownCircle className="h-3.5 w-3.5" /> },
+   104→  out: { label: 'Keluar', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', icon: <ArrowUpCircle className="h-3.5 w-3.5" /> },
+   105→  adjustment: { label: 'Adjustment', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', icon: <History className="h-3.5 w-3.5" /> },
+   106→  opname: { label: 'Opname', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', icon: <ClipboardCheck className="h-3.5 w-3.5" /> },
+   107→};
+   108→
+   109→// ─── Product Search Select ────────────────────────────────────────────────────
+   110→
+   111→function ProductSearchSelect({
+   112→  value,
+   113→  onChange,
+   114→  selectedStock,
+   115→}: {
+   116→  value: string;
+   117→  onChange: (id: string) => void;
+   118→  selectedStock?: number;
+   119→}) {
+   120→  const [open, setOpen] = useState(false);
+   121→  const [search, setSearch] = useState('');
+   122→
+   123→  const { data, isLoading } = useQuery({
+   124→    queryKey: ['products-search', search],
+   125→    queryFn: async () => {
+   126→      const params = new URLSearchParams({ perPage: '20' });
+   127→      if (search) params.set('search', search);
+   128→      const res = await fetch(`/api/products?${params}`);
+   129→      if (!res.ok) throw new Error('Gagal memuat produk');
+   130→      const json = (await res.json()) as PaginatedResponse<Product>;
+   131→      return json.data;
+   132→    },
+   133→  });
+   134→
+   135→  const selected = data?.find((p) => p.id === value);
+   136→
+   137→  return (
+   138→    <div className="space-y-1.5">
+   139→      <Label>Pilih Produk</Label>
+   140→      <Popover open={open} onOpenChange={setOpen}>
+   141→        <PopoverTrigger asChild>
+   142→          <Button
+   143→            variant="outline"
+   144→            role="combobox"
+   145→            aria-expanded={open}
+   146→            className="w-full justify-between font-normal"
+   147→          >
+   148→            {selected ? (
+   149→              <span className="flex items-center gap-2 truncate">
+   150→                <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
+   151→                <span className="truncate">{selected.name}</span>
+   152→                {selectedStock !== undefined && (
+   153→                  <Badge variant="secondary" className="shrink-0 text-xs">
+   154→                    Stok: {selectedStock}
+   155→                  </Badge>
+   156→                )}
+   157→              </span>
+   158→            ) : (
+   159→              <span className="text-muted-foreground">Cari produk...</span>
+   160→            )}
+   161→            <ChevronRight className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+   162→          </Button>
+   163→        </PopoverTrigger>
+   164→        <PopoverContent className="w-[300px] p-0" align="start">
+   165→          <Command>
+   166→            <CommandInput
+   167→              placeholder="Cari nama produk..."
+   168→              value={search}
+   169→              onValueChange={setSearch}
+   170→            />
+   171→            <CommandList>
+   172→              <CommandEmpty>
+   173→                {isLoading ? (
+   174→                  <div className="flex items-center justify-center py-6">
+   175→                    <Loader2 className="h-4 w-4 animate-spin" />
+   176→                  </div>
+   177→                ) : (
+   178→                  'Produk tidak ditemukan'
+   179→                )}
+   180→              </CommandEmpty>
+   181→              <CommandGroup>
+   182→                {data?.map((product) => (
+   183→                  <CommandItem
+   184→                    key={product.id}
+   185→                  value={`${product.name} ${product.sku || ''} ${product.barcode || ''}`}
+   186→                  onSelect={() => {
+   187→                    onChange(product.id);
+   188→                    setOpen(false);
+   189→                  }}
+   190→                  className="flex items-center gap-2"
+   191→                >
+   192→                    <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
+   193→                    <div className="flex flex-col overflow-hidden">
+   194→                      <span className="truncate text-sm">{product.name}</span>
+   195→                      <span className="text-xs text-muted-foreground">
+   196→                        Stok: {product.stock} · {formatRupiah(product.sellPrice)}
+   197→                      </span>
+   198→                    </div>
+   199→                  </CommandItem>
+   200→                ))}
+   201→              </CommandGroup>
+   202→            </CommandList>
+   203→          </Command>
+   204→        </PopoverContent>
+   205→      </Popover>
+   206→    </div>
+   207→  );
+   208→}
+   209→
+   210→// ─── Riwayat Stok Tab ─────────────────────────────────────────────────────────
+   211→
+   212→function RiwayatStokTab() {
+   213→  const [page, setPage] = useState(1);
+   214→  const [perPage, setPerPage] = useState(20);
+   215→  const [typeFilter, setTypeFilter] = useState('');
+   216→  const [search, setSearch] = useState('');
+   217→  const [startDate, setStartDate] = useState('');
+   218→  const [endDate, setEndDate] = useState('');
+   219→  const [searchInput, setSearchInput] = useState('');
+   220→
+   221→  const { data, isLoading, isError } = useQuery({
+   222→    queryKey: ['stock-history', page, perPage, typeFilter, search, startDate, endDate],
+   223→    queryFn: async () => {
+   224→      const params = new URLSearchParams({
+   225→        page: String(page),
+   226→        perPage: String(perPage),
+   227→      });
+   228→      if (typeFilter) params.set('type', typeFilter);
+   229→      if (search) params.set('search', search);
+   230→      if (startDate) params.set('startDate', startDate);
+   231→      if (endDate) params.set('endDate', endDate);
+   232→      const res = await fetch(`/api/stock?${params}`);
+   233→      if (!res.ok) throw new Error('Gagal memuat riwayat stok');
+   234→      return res.json() as Promise<PaginatedResponse<StockAdjustment & { user?: { id: string; name: string; email: string } }>>;
+   235→    },
+   236→  });
+   237→
+   238→  const handleSearch = useCallback(() => {
+   239→    setSearch(searchInput);
+   240→    setPage(1);
+   241→  }, [searchInput]);
+   242→
+   243→  const handleClearFilters = useCallback(() => {
+   244→    setTypeFilter('');
+   245→    setSearch('');
+   246→    setSearchInput('');
+   247→    setStartDate('');
+   248→    setEndDate('');
+   249→    setPage(1);
+   250→  }, []);
+   251→
+   252→  return (
+   253→    <div className="space-y-4">
+   254→      {/* Filters */}
+   255→      <Card>
+   256→        <CardContent className="p-4">
+   257→          <div className="flex flex-wrap items-end gap-3">
+   258→            <div className="flex-1 min-w-[200px]">
+   259→              <Label className="text-xs text-muted-foreground">Cari Produk</Label>
+   260→              <div className="relative mt-1">
+   261→                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   262→                <Input
+   263→                  placeholder="Nama produk..."
+   264→                  value={searchInput}
+   265→                  onChange={(e) => setSearchInput(e.target.value)}
+   266→                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+   267→                  className="pl-9"
+   268→                />
+   269→              </div>
+   270→            </div>
+   271→            <div className="w-full sm:w-auto">
+   272→              <Label className="text-xs text-muted-foreground">Tipe</Label>
+   273→              <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v === 'all' ? '' : v); setPage(1); }}>
+   274→                <SelectTrigger className="mt-1 w-full sm:w-[160px]">
+   275→                  <SelectValue placeholder="Semua Tipe" />
+   276→                </SelectTrigger>
+   277→                <SelectContent>
+   278→                  <SelectItem value="all">Semua Tipe</SelectItem>
+   279→                  <SelectItem value="in">Masuk</SelectItem>
+   280→                  <SelectItem value="out">Keluar</SelectItem>
+   281→                  <SelectItem value="adjustment">Adjustment</SelectItem>
+   282→                  <SelectItem value="opname">Opname</SelectItem>
+   283→                </SelectContent>
+   284→              </Select>
+   285→            </div>
+   286→            <div className="w-full sm:w-auto">
+   287→              <Label className="text-xs text-muted-foreground">Tanggal Mulai</Label>
+   288→              <Input
+   289→                type="date"
+   290→                value={startDate}
+   291→                onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+   292→                className="mt-1"
+   293→              />
+   294→            </div>
+   295→            <div className="w-full sm:w-auto">
+   296→              <Label className="text-xs text-muted-foreground">Tanggal Akhir</Label>
+   297→              <Input
+   298→                type="date"
+   299→                value={endDate}
+   300→                onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+   301→                className="mt-1"
+   302→              />
+   303→            </div>
+   304→            <div className="flex gap-2">
+   305→              <Button size="sm" onClick={handleSearch}>
+   306→                <Search className="mr-1.5 h-4 w-4" />
+   307→                Cari
+   308→              </Button>
+   309→              <Button size="sm" variant="outline" onClick={handleClearFilters}>
+   310→                <X className="mr-1.5 h-4 w-4" />
+   311→                Reset
+   312→              </Button>
+   313→            </div>
+   314→          </div>
+   315→        </CardContent>
+   316→      </Card>
+   317→
+   318→      {/* Table */}
+   319→      <Card>
+   320→        <CardContent className="p-0">
+   321→          <div className="max-h-[500px] overflow-y-auto">
+   322→            <Table>
+   323→              <TableHeader>
+   324→                <TableRow className="sticky top-0 bg-background z-10">
+   325→                  <TableHead className="w-12">No</TableHead>
+   326→                  <TableHead>Tanggal</TableHead>
+   327→                  <TableHead>Produk</TableHead>
+   328→                  <TableHead>Tipe</TableHead>
+   329→                  <TableHead className="text-right">Jumlah</TableHead>
+   330→                  <TableHead className="text-right">Stok Sebelum</TableHead>
+   331→                  <TableHead className="text-right">Stok Sesudah</TableHead>
+   332→                  <TableHead className="hidden md:table-cell">Alasan</TableHead>
+   333→                  <TableHead className="hidden lg:table-cell">User</TableHead>
+   334→                </TableRow>
+   335→              </TableHeader>
+   336→              <TableBody>
+   337→                {isLoading ? (
+   338→                  Array.from({ length: 5 }).map((_, i) => (
+   339→                    <TableRow key={i}>
+   340→                      {Array.from({ length: 9 }).map((_, j) => (
+   341→                        <TableCell key={j}>
+   342→                          <Skeleton className="h-4 w-full" />
+   343→                        </TableCell>
+   344→                      ))}
+   345→                    </TableRow>
+   346→                  ))
+   347→                ) : isError || !data?.data?.length ? (
+   348→                  <TableRow>
+   349→                    <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+   350→                      {isError ? 'Gagal memuat data' : 'Tidak ada riwayat stok'}
+   351→                    </TableCell>
+   352→                  </TableRow>
+   353→                ) : (
+   354→                  data.data.map((item, idx) => {
+   355→                    const cfg = typeConfig[item.type] || typeConfig.adjustment;
+   356→                    return (
+   357→                      <TableRow key={item.id}>
+   358→                        <TableCell className="text-muted-foreground">
+   359→                          {(page - 1) * perPage + idx + 1}
+   360→                        </TableCell>
+   361→                        <TableCell className="whitespace-nowrap text-sm">
+   362→                          {formatDate(item.createdAt)}
+   363→                        </TableCell>
+   364→                        <TableCell className="font-medium">
+   365→                          {item.product?.name || '-'}
+   366→                        </TableCell>
+   367→                        <TableCell>
+   368→                          <Badge variant="secondary" className={cn('gap-1 font-medium', cfg.color)}>
+   369→                            {cfg.icon}
+   370→                            {cfg.label}
+   371→                          </Badge>
+   372→                        </TableCell>
+   373→                        <TableCell className="text-right font-mono">
+   374→                          {item.quantity}
+   375→                        </TableCell>
+   376→                        <TableCell className="text-right font-mono">
+   377→                          {item.previousStock}
+   378→                        </TableCell>
+   379→                        <TableCell className="text-right font-mono font-medium">
+   380→                          {item.newStock}
+   381→                        </TableCell>
+   382→                        <TableCell className="hidden max-w-[200px] truncate md:table-cell">
+   383→                          {item.reason || '-'}
+   384→                        </TableCell>
+   385→                        <TableCell className="hidden lg:table-cell">
+   386→                          {item.user?.name || '-'}
+   387→                        </TableCell>
+   388→                      </TableRow>
+   389→                    );
+   390→                  })
+   391→                )}
+   392→              </TableBody>
+   393→            </Table>
+   394→          </div>
+   395→
+   396→          {/* Pagination */}
+   397→          {data && data.totalPages > 1 && (
+   398→            <div className="flex items-center justify-between border-t px-4 py-3">
+   399→              <p className="text-sm text-muted-foreground">
+   400→                Halaman {data.page} dari {data.totalPages} · {data.total} data
+   401→              </p>
+   402→              <div className="flex items-center gap-2">
+   403→                <Button
+   404→                  size="sm"
+   405→                  variant="outline"
+   406→                  disabled={page <= 1}
+   407→                  onClick={() => setPage((p) => p - 1)}
+   408→                >
+   409→                  <ChevronLeft className="h-4 w-4" />
+   410→                </Button>
+   411→                <Button
+   412→                  size="sm"
+   413→                  variant="outline"
+   414→                  disabled={page >= data.totalPages}
+   415→                  onClick={() => setPage((p) => p + 1)}
+   416→                >
+   417→                  <ChevronRight className="h-4 w-4" />
+   418→                </Button>
+   419→              </div>
+   420→            </div>
+   421→          )}
+   422→        </CardContent>
+   423→      </Card>
+   424→    </div>
+   425→  );
+   426→}
+   427→
+   428→// ─── Stok Masuk Tab ───────────────────────────────────────────────────────────
+   429→
+   430→const stockInSchema = z.object({
+   431→  productId: z.string().min(1, 'Produk wajib dipilih'),
+   432→  quantity: z.coerce.number().int().min(1, 'Jumlah minimal 1'),
+   433→  reason: z.string().optional(),
+   434→});
+   435→
+   436→type StockInForm = z.infer<typeof stockInSchema>;
+   437→
+   438→function StokMasukTab() {
+   439→  const queryClient = useQueryClient();
+   440→  const [selectedProductId, setSelectedProductId] = useState('');
+   441→
+   442→  const form = useForm<StockInForm>({
+   443→    resolver: zodResolver(stockInSchema),
+   444→    defaultValues: { productId: '', quantity: 1, reason: '' },
+   445→  });
+   446→
+   447→  const { data: selectedProduct } = useQuery({
+   448→    queryKey: ['product', selectedProductId],
+   449→    queryFn: async () => {
+   450→      if (!selectedProductId) return null;
+   451→      const res = await fetch(`/api/products/${selectedProductId}`);
+   452→      if (!res.ok) return null;
+   453→      const json = await res.json();
+   454→      return json.data as Product;
+   455→    },
+   456→    enabled: !!selectedProductId,
+   457→  });
+   458→
+   459→  const mutation = useMutation({
+   460→    mutationFn: async (values: StockInForm) => {
+   461→      const res = await fetch('/api/stock', {
+   462→        method: 'POST',
+   463→        headers: { 'Content-Type': 'application/json' },
+   464→        body: JSON.stringify({ ...values, type: 'in', userId: '' }),
+   465→      });
+   466→      const json = await res.json();
+   467→      if (!res.ok) throw new Error(json.error || 'Gagal menambahkan stok');
+   468→      return json;
+   469→    },
+   470→    onSuccess: () => {
+   471→      toast.success('Stok masuk berhasil ditambahkan');
+   472→      queryClient.invalidateQueries({ queryKey: ['stock-history'] });
+   473→      queryClient.invalidateQueries({ queryKey: ['products-search'] });
+   474→      queryClient.invalidateQueries({ queryKey: ['product', selectedProductId] });
+   475→      form.reset();
+   476→      setSelectedProductId('');
+   477→    },
+   478→    onError: (err) => toast.error(err.message),
+   479→  });
+   480→
+   481→  const onSubmit = (values: StockInForm) => mutation.mutate(values);
+   482→
+   483→  return (
+   484→    <motion.div
+   485→      initial={{ opacity: 0, y: 10 }}
+   486→      animate={{ opacity: 1, y: 0 }}
+   487→      className="mx-auto max-w-lg"
+   488→    >
+   489→      <Card>
+   490→        <CardHeader>
+   491→          <CardTitle className="flex items-center gap-2">
+   492→            <ArrowDownCircle className="h-5 w-5 text-emerald-500" />
+   493→            Tambah Stok Masuk
+   494→          </CardTitle>
+   495→          <CardDescription>
+   496→            Tambahkan jumlah stok baru untuk produk
+   497→          </CardDescription>
+   498→        </CardHeader>
+   499→        <CardContent>
+   500→          <Form {...form}>
+   501→            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+   502→              <ProductSearchSelect
+   503→                value={selectedProductId}
+   504→                onChange={(id) => {
+   505→                  setSelectedProductId(id);
+   506→                  form.setValue('productId', id);
+   507→                }}
+   508→              />
+   509→              {selectedProduct && (
+   510→                <div className="rounded-lg border bg-muted/50 p-3 text-sm">
+   511→                  <div className="grid grid-cols-2 gap-2">
+   512→                    <span className="text-muted-foreground">Stok Saat Ini</span>
+   513→                    <span className="font-mono font-medium">{selectedProduct.stock} {selectedProduct.unit}</span>
+   514→                    <span className="text-muted-foreground">Harga Jual</span>
+   515→                    <span className="font-mono">{formatRupiah(selectedProduct.sellPrice)}</span>
+   516→                  </div>
+   517→                </div>
+   518→              )}
+   519→              <FormField
+   520→                control={form.control}
+   521→                name="quantity"
+   522→                render={({ field }) => (
+   523→                  <FormItem>
+   524→                    <FormLabel>Jumlah</FormLabel>
+   525→                    <FormControl>
+   526→                      <Input
+   527→                        type="number"
+   528→                        min={1}
+   529→                        placeholder="Masukkan jumlah"
+   530→                        {...field}
+   531→                      />
+   532→                    </FormControl>
+   533→                    <FormMessage />
+   534→                  </FormItem>
+   535→                )}
+   536→              />
+   537→              <FormField
+   538→                control={form.control}
+   539→                name="reason"
+   540→                render={({ field }) => (
+   541→                  <FormItem>
+   542→                    <FormLabel>Alasan (opsional)</FormLabel>
+   543→                    <FormControl>
+   544→                      <Textarea
+   545→                        placeholder="Misal: Pembelian dari supplier"
+   546→                        rows={3}
+   547→                        {...field}
+   548→                      />
+   549→                    </FormControl>
+   550→                    <FormMessage />
+   551→                  </FormItem>
+   552→                )}
+   553→              />
+   554→              <Button
+   555→                type="submit"
+   556→                className="w-full"
+   557→                disabled={mutation.isPending}
+   558→              >
+   559→                {mutation.isPending ? (
+   560→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   561→                ) : (
+   562→                  <CheckCircle2 className="mr-2 h-4 w-4" />
+   563→                )}
+   564→                Simpan Stok Masuk
+   565→              </Button>
+   566→            </form>
+   567→          </Form>
+   568→        </CardContent>
+   569→      </Card>
+   570→    </motion.div>
+   571→  );
+   572→}
+   573→
+   574→// ─── Stok Keluar Tab ──────────────────────────────────────────────────────────
+   575→
+   576→const stockOutSchema = z.object({
+   577→  productId: z.string().min(1, 'Produk wajib dipilih'),
+   578→  quantity: z.coerce.number().int().min(1, 'Jumlah minimal 1'),
+   579→  reason: z.string().optional(),
+   580→});
+   581→
+   582→type StockOutForm = z.infer<typeof stockOutSchema>;
+   583→
+   584→function StokKeluarTab() {
+   585→  const queryClient = useQueryClient();
+   586→  const [selectedProductId, setSelectedProductId] = useState('');
+   587→
+   588→  const form = useForm<StockOutForm>({
+   589→    resolver: zodResolver(stockOutSchema),
+   590→    defaultValues: { productId: '', quantity: 1, reason: '' },
+   591→  });
+   592→
+   593→  const { data: selectedProduct } = useQuery({
+   594→    queryKey: ['product', selectedProductId],
+   595→    queryFn: async () => {
+   596→      if (!selectedProductId) return null;
+   597→      const res = await fetch(`/api/products/${selectedProductId}`);
+   598→      if (!res.ok) return null;
+   599→      const json = await res.json();
+   600→      return json.data as Product;
+   601→    },
+   602→    enabled: !!selectedProductId,
+   603→  });
+   604→
+   605→  const mutation = useMutation({
+   606→    mutationFn: async (values: StockOutForm) => {
+   607→      const res = await fetch('/api/stock', {
+   608→        method: 'POST',
+   609→        headers: { 'Content-Type': 'application/json' },
+   610→        body: JSON.stringify({ ...values, type: 'out', userId: '' }),
+   611→      });
+   612→      const json = await res.json();
+   613→      if (!res.ok) throw new Error(json.error || 'Gagal mengurangi stok');
+   614→      return json;
+   615→    },
+   616→    onSuccess: () => {
+   617→      toast.success('Stok keluar berhasil dicatat');
+   618→      queryClient.invalidateQueries({ queryKey: ['stock-history'] });
+   619→      queryClient.invalidateQueries({ queryKey: ['products-search'] });
+   620→      queryClient.invalidateQueries({ queryKey: ['product', selectedProductId] });
+   621→      form.reset();
+   622→      setSelectedProductId('');
+   623→    },
+   624→    onError: (err) => toast.error(err.message),
+   625→  });
+   626→
+   627→  const onSubmit = (values: StockOutForm) => mutation.mutate(values);
+   628→
+   629→  const currentStock = selectedProduct?.stock ?? 0;
+   630→
+   631→  return (
+   632→    <motion.div
+   633→      initial={{ opacity: 0, y: 10 }}
+   634→      animate={{ opacity: 1, y: 0 }}
+   635→      className="mx-auto max-w-lg"
+   636→    >
+   637→      <Card>
+   638→        <CardHeader>
+   639→          <CardTitle className="flex items-center gap-2">
+   640→            <ArrowUpCircle className="h-5 w-5 text-red-500" />
+   641→            Catat Stok Keluar
+   642→          </CardTitle>
+   643→          <CardDescription>
+   644→            Kurangi stok produk (rusak, kadaluarsa, dll)
+   645→          </CardDescription>
+   646→        </CardHeader>
+   647→        <CardContent>
+   648→          <Form {...form}>
+   649→            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+   650→              <ProductSearchSelect
+   651→                value={selectedProductId}
+   652→                onChange={(id) => {
+   653→                  setSelectedProductId(id);
+   654→                  form.setValue('productId', id);
+   655→                }}
+   656→              />
+   657→              {selectedProduct && (
+   658→                <div className="rounded-lg border bg-muted/50 p-3 text-sm">
+   659→                  <div className="grid grid-cols-2 gap-2">
+   660→                    <span className="text-muted-foreground">Stok Saat Ini</span>
+   661→                    <span className={cn('font-mono font-medium', currentStock <= selectedProduct.minStock && 'text-red-600')}>
+   662→                      {currentStock} {selectedProduct.unit}
+   663→                    </span>
+   664→                    <span className="text-muted-foreground">Harga Jual</span>
+   665→                    <span className="font-mono">{formatRupiah(selectedProduct.sellPrice)}</span>
+   666→                  </div>
+   667→                </div>
+   668→              )}
+   669→              <FormField
+   670→                control={form.control}
+   671→                name="quantity"
+   672→                render={({ field }) => (
+   673→                  <FormItem>
+   674→                    <FormLabel>Jumlah</FormLabel>
+   675→                    <FormControl>
+   676→                      <Input
+   677→                        type="number"
+   678→                        min={1}
+   679→                        max={currentStock || undefined}
+   680→                        placeholder="Masukkan jumlah"
+   681→                        {...field}
+   682→                      />
+   683→                    </FormControl>
+   684→                    {currentStock > 0 && (
+   685→                      <p className="text-xs text-muted-foreground">
+   686→                        Maksimal: {currentStock} {selectedProduct?.unit}
+   687→                      </p>
+   688→                    )}
+   689→                    <FormMessage />
+   690→                  </FormItem>
+   691→                )}
+   692→              />
+   693→              <FormField
+   694→                control={form.control}
+   695→                name="reason"
+   696→                render={({ field }) => (
+   697→                  <FormItem>
+   698→                    <FormLabel>Alasan (opsional)</FormLabel>
+   699→                    <FormControl>
+   700→                      <Textarea
+   701→                        placeholder="Misal: Produk rusak / kadaluarsa"
+   702→                        rows={3}
+   703→                        {...field}
+   704→                      />
+   705→                    </FormControl>
+   706→                    <FormMessage />
+   707→                  </FormItem>
+   708→                )}
+   709→              />
+   710→              <Button
+   711→                type="submit"
+   712→                variant="destructive"
+   713→                className="w-full"
+   714→                disabled={mutation.isPending}
+   715→              >
+   716→                {mutation.isPending ? (
+   717→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   718→                ) : (
+   719→                  <CheckCircle2 className="mr-2 h-4 w-4" />
+   720→                )}
+   721→                Simpan Stok Keluar
+   722→              </Button>
+   723→            </form>
+   724→          </Form>
+   725→        </CardContent>
+   726→      </Card>
+   727→    </motion.div>
+   728→  );
+   729→}
+   730→
+   731→// ─── Stock Opname Tab ─────────────────────────────────────────────────────────
+   732→
+   733→const stockOpnameSchema = z.object({
+   734→  productId: z.string().min(1, 'Produk wajib dipilih'),
+   735→  actualStock: z.coerce.number().int().min(0, 'Stok aktual minimal 0'),
+   736→  reason: z.string().optional(),
+   737→});
+   738→
+   739→type StockOpnameForm = z.infer<typeof stockOpnameSchema>;
+   740→
+   741→function StockOpnameTab() {
+   742→  const queryClient = useQueryClient();
+   743→  const [selectedProductId, setSelectedProductId] = useState('');
+   744→
+   745→  const form = useForm<StockOpnameForm>({
+   746→    resolver: zodResolver(stockOpnameSchema),
+   747→    defaultValues: { productId: '', actualStock: 0, reason: '' },
+   748→  });
+   749→
+   750→  const { data: selectedProduct, isLoading: productLoading } = useQuery({
+   751→    queryKey: ['product', selectedProductId],
+   752→    queryFn: async () => {
+   753→      if (!selectedProductId) return null;
+   754→      const res = await fetch(`/api/products/${selectedProductId}`);
+   755→      if (!res.ok) return null;
+   756→      const json = await res.json();
+   757→      return json.data as Product;
+   758→    },
+   759→    enabled: !!selectedProductId,
+   760→  });
+   761→
+   762→  const mutation = useMutation({
+   763→    mutationFn: async (values: StockOpnameForm) => {
+   764→      const res = await fetch('/api/stock/opname', {
+   765→        method: 'POST',
+   766→        headers: { 'Content-Type': 'application/json' },
+   767→        body: JSON.stringify({ ...values, userId: '' }),
+   768→      });
+   769→      const json = await res.json();
+   770→      if (!res.ok) throw new Error(json.error || 'Gagal melakukan stock opname');
+   771→      return json;
+   772→    },
+   773→    onSuccess: () => {
+   774→      toast.success('Stock opname berhasil disimpan');
+   775→      queryClient.invalidateQueries({ queryKey: ['stock-history'] });
+   776→      queryClient.invalidateQueries({ queryKey: ['products-search'] });
+   777→      queryClient.invalidateQueries({ queryKey: ['product', selectedProductId] });
+   778→      form.reset();
+   779→      setSelectedProductId('');
+   780→    },
+   781→    onError: (err) => toast.error(err.message),
+   782→  });
+   783→
+   784→  const onSubmit = (values: StockOpnameForm) => mutation.mutate(values);
+   785→
+   786→  const currentStock = selectedProduct?.stock ?? 0;
+   787→  const actualStock = form.watch('actualStock') || 0;
+   788→  const difference = actualStock - currentStock;
+   789→
+   790→  return (
+   791→    <motion.div
+   792→      initial={{ opacity: 0, y: 10 }}
+   793→      animate={{ opacity: 1, y: 0 }}
+   794→      className="mx-auto max-w-lg"
+   795→    >
+   796→      <Card>
+   797→        <CardHeader>
+   798→          <CardTitle className="flex items-center gap-2">
+   799→            <ClipboardCheck className="h-5 w-5 text-amber-500" />
+   800→            Stock Opname
+   801→          </CardTitle>
+   802→          <CardDescription>
+   803→            Hitung ulang stok aktual di gudang
+   804→          </CardDescription>
+   805→        </CardHeader>
+   806→        <CardContent>
+   807→          <Form {...form}>
+   808→            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+   809→              <ProductSearchSelect
+   810→                value={selectedProductId}
+   811→                onChange={(id) => {
+   812→                  setSelectedProductId(id);
+   813→                  form.setValue('productId', id);
+   814→                }}
+   815→              />
+   816→
+   817→              {productLoading && selectedProductId && (
+   818→                <div className="space-y-2">
+   819→                  <Skeleton className="h-16 w-full" />
+   820→                </div>
+   821→              )}
+   822→
+   823→              {selectedProduct && !productLoading && (
+   824→                <>
+   825→                  <div className="rounded-lg border bg-muted/50 p-4">
+   826→                    <div className="mb-3 flex items-center gap-2">
+   827→                      <Package className="h-4 w-4 text-muted-foreground" />
+   828→                      <span className="text-sm font-medium">Perbandingan Stok</span>
+   829→                    </div>
+   830→                    <div className="grid grid-cols-3 gap-4 text-center">
+   831→                      <div>
+   832→                        <p className="text-xs text-muted-foreground">Stok Sistem</p>
+   833→                        <p className="text-lg font-mono font-bold">{currentStock}</p>
+   834→                      </div>
+   835→                      <div className="flex items-center justify-center">
+   836→                        <div className="h-px flex-1 bg-border" />
+   837→                        <span className="mx-2 text-muted-foreground">→</span>
+   838→                        <div className="h-px flex-1 bg-border" />
+   839→                      </div>
+   840→                      <div>
+   841→                        <p className="text-xs text-muted-foreground">Stok Aktual</p>
+   842→                        <p className={cn(
+   843→                          'text-lg font-mono font-bold',
+   844→                          difference > 0 && 'text-emerald-600',
+   845→                          difference < 0 && 'text-red-600',
+   846→                          difference === 0 && 'text-muted-foreground'
+   847→                        )}>
+   848→                          {actualStock}
+   849→                        </p>
+   850→                      </div>
+   851→                    </div>
+   852→                    {difference !== 0 && (
+   853→                      <p className={cn(
+   854→                        'mt-2 text-center text-sm font-medium',
+   855→                        difference > 0 && 'text-emerald-600',
+   856→                        difference < 0 && 'text-red-600'
+   857→                      )}>
+   858→                        {difference > 0 ? `+${difference}` : difference} ({difference > 0 ? 'kelebihan' : 'kekurangan'})
+   859→                      </p>
+   860→                    )}
+   861→                  </div>
+   862→
+   863→                  <FormField
+   864→                    control={form.control}
+   865→                    name="actualStock"
+   866→                    render={({ field }) => (
+   867→                      <FormItem>
+   868→                        <FormLabel>Stok Aktual</FormLabel>
+   869→                        <FormControl>
+   870→                          <Input
+   871→                            type="number"
+   872→                            min={0}
+   873→                            placeholder="Masukkan jumlah stok aktual"
+   874→                            {...field}
+   875→                          />
+   876→                        </FormControl>
+   877→                        <FormMessage />
+   878→                      </FormItem>
+   879→                    )}
+   880→                  />
+   881→                </>
+   882→              )}
+   883→
+   884→              {!selectedProductId && (
+   885→                <FormField
+   886→                  control={form.control}
+   887→                  name="actualStock"
+   888→                  render={({ field }) => (
+   889→                    <FormItem>
+   890→                      <FormLabel>Stok Aktual</FormLabel>
+   891→                      <FormControl>
+   892→                        <Input
+   893→                          type="number"
+   894→                          min={0}
+   895→                          placeholder="Pilih produk terlebih dahulu"
+   896→                          disabled
+   897→                          {...field}
+   898→                        />
+   899→                      </FormControl>
+   900→                      <FormMessage />
+   901→                    </FormItem>
+   902→                  )}
+   903→                />
+   904→              )}
+   905→
+   906→              <FormField
+   907→                control={form.control}
+   908→                name="reason"
+   909→                render={({ field }) => (
+   910→                  <FormItem>
+   911→                    <FormLabel>Catatan (opsional)</FormLabel>
+   912→                    <FormControl>
+   913→                      <Textarea
+   914→                        placeholder="Catatan tambahan untuk stock opname"
+   915→                        rows={3}
+   916→                        {...field}
+   917→                      />
+   918→                    </FormControl>
+   919→                    <FormMessage />
+   920→                  </FormItem>
+   921→                )}
+   922→              />
+   923→              <Button
+   924→                type="submit"
+   925→                className="w-full bg-amber-600 hover:bg-amber-700"
+   926→                disabled={mutation.isPending || !selectedProductId}
+   927→              >
+   928→                {mutation.isPending ? (
+   929→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   930→                ) : (
+   931→                  <ClipboardCheck className="mr-2 h-4 w-4" />
+   932→                )}
+   933→                Simpan Stock Opname
+   934→              </Button>
+   935→            </form>
+   936→          </Form>
+   937→        </CardContent>
+   938→      </Card>
+   939→    </motion.div>
+   940→  );
+   941→}
+   942→
+   943→// ─── Main Page ────────────────────────────────────────────────────────────────
+   944→
+   945→export default function StockPage() {
+   946→  return (
+   947→    <div className="space-y-6">
+   948→      <div>
+   949→        <h1 className="text-2xl font-bold tracking-tight">Manajemen Stok</h1>
+   950→        <p className="text-muted-foreground">Kelola stok masuk, keluar, dan stock opname</p>
+   951→      </div>
+   952→
+   953→      <Tabs defaultValue="history" className="space-y-4">
+   954→        <TabsList className="flex w-full flex-wrap">
+   955→          <TabsTrigger value="history" className="flex-1 min-w-[120px]">
+   956→            <History className="mr-2 h-4 w-4" />
+   957→            Riwayat Stok
+   958→          </TabsTrigger>
+   959→          <TabsTrigger value="in" className="flex-1 min-w-[120px]">
+   960→            <ArrowDownCircle className="mr-2 h-4 w-4" />
+   961→            Stok Masuk
+   962→          </TabsTrigger>
+   963→          <TabsTrigger value="out" className="flex-1 min-w-[120px]">
+   964→            <ArrowUpCircle className="mr-2 h-4 w-4" />
+   965→            Stok Keluar
+   966→          </TabsTrigger>
+   967→          <TabsTrigger value="opname" className="flex-1 min-w-[120px]">
+   968→            <ClipboardCheck className="mr-2 h-4 w-4" />
+   969→            Stock Opname
+   970→          </TabsTrigger>
+   971→        </TabsList>
+   972→
+   973→        <AnimatePresence mode="wait">
+   974→          <TabsContent value="history">
+   975→            <motion.div
+   976→              key="riwayat"
+   977→              initial={{ opacity: 0, y: 8 }}
+   978→              animate={{ opacity: 1, y: 0 }}
+   979→              exit={{ opacity: 0, y: -8 }}
+   980→              transition={{ duration: 0.2 }}
+   981→            >
+   982→              <RiwayatStokTab />
+   983→            </motion.div>
+   984→          </TabsContent>
+   985→          <TabsContent value="in">
+   986→            <StokMasukTab />
+   987→          </TabsContent>
+   988→          <TabsContent value="out">
+   989→            <StokKeluarTab />
+   990→          </TabsContent>
+   991→          <TabsContent value="opname">
+   992→            <StockOpnameTab />
+   993→          </TabsContent>
+   994→        </AnimatePresence>
+   995→      </Tabs>
+   996→    </div>
+   997→  );
+   998→}
+   999→

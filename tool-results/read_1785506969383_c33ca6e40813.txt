@@ -1,0 +1,783 @@
+     1→# POS Application Worklog
+     2→
+     3→## Task ID: 3-a — Authentication API Routes & Seed Data
+     4→**Agent:** Main Agent
+     5→**Date:** 2025-07-03
+     6→
+     7→### What was done:
+     8→
+     9→1. **Installed dependencies:** `bcryptjs` and `@types/bcryptjs` for password hashing.
+    10→
+    11→2. **Created API Routes:**
+    12→   - **`POST /api/auth/login`** — Validates email/password with Zod, finds user by email, verifies password with bcrypt, checks active status, logs activity, returns user data (without password) including branch relation.
+    13→   - **`POST /api/auth/register`** — Validates name/email/password/role with Zod, allows first user to be `super_admin`, subsequent registrations require `x-user-role: super_admin` header, checks email uniqueness, validates branch, hashes password, logs activity.
+    14→   - **`GET/PUT/DELETE /api/auth/[id]`** — GET returns user by ID with branch; PUT updates profile fields with email uniqueness check; DELETE performs soft-delete (deactivates) if user has transactions, hard delete otherwise.
+    15→   - **`POST /api/auth/change-password`** — Validates userId/oldPassword/newPassword, verifies old password, hashes new password, logs activity.
+    16→   - **`GET /api/users`** — Lists all users with pagination (page/limit), search (name/email/phone), and filters (role, isActive, branchId). Returns users without passwords.
+    17→
+    18→3. **Created comprehensive seed script** (`prisma/seed.ts`) and executed it successfully:
+    19→   - 2 branches (Pusat, Cabang 1)
+    20→   - 4 users (1 super_admin, 1 admin, 2 cashiers) — default login: `admin@pos.com` / `admin123`
+    21→   - 5 categories (Makanan, Minuman, Snack, Dessert, Lainnya)
+    22→   - 3 suppliers (PT Food Supply, CV Beverage Indo, UD Snack Jaya)
+    23→   - 5 customers with varied member points
+    24→   - 20 products across categories with Indonesian food/beverage names (IDR 5,000–40,000)
+    25→   - Tax setting (11%, exclude mode, enabled)
+    26→   - Service charge setting (5%, disabled)
+    27→   - 9 store settings (name: Toko Sejahtera, address, phone, email, currency: IDR, timezone: Asia/Jakarta, etc.)
+    28→   - 20 sample transactions spanning last 30 days with 1-4 items each, varied payment methods
+    29→   - 5 stock adjustments (in/out/adjustment/opname)
+    30→   - 4 purchases from suppliers
+    31→
+    32→4. **All routes pass ESLint** with zero errors.
+    33→
+    34→### Files created/modified:
+    35→- `src/app/api/auth/login/route.ts`
+    36→- `src/app/api/auth/register/route.ts`
+    37→- `src/app/api/auth/[id]/route.ts`
+    38→- `src/app/api/auth/change-password/route.ts`
+    39→- `src/app/api/users/route.ts`
+    40→- `prisma/seed.ts`
+    41→- `worklog.md` (created)
+    42→
+    43→---
+    44→
+    45→## Task ID: 6-a — Core Business API Routes
+    46→**Agent:** Main Agent
+    47→**Date:** 2025-07-03
+    48→
+    49→### What was done:
+    50→
+    51→Created 23 API route files covering all core POS business modules. All routes use Zod validation, proper HTTP status codes, error handling with try/catch, and standardized pagination response format `{ data, total, page, perPage, totalPages }`.
+    52→
+    53→#### Products (3 files)
+    54→- **`GET/POST /api/products`** — List products with pagination (page/perPage), search (name/barcode/sku), filter (categoryId, isActive, branchId), sorting (sortBy/sortOrder). Includes category and branch relations. POST creates product with Zod validation.
+    55→- **`GET/PUT/DELETE /api/products/[id]`** — GET single product with relations. PUT updates with partial validation. DELETE performs soft delete (sets isActive=false).
+    56→- **`GET /api/products/barcode/[barcode]`** — Find active product by barcode. Returns 404 if not found or inactive.
+    57→
+    58→#### Categories (2 files)
+    59→- **`GET/POST /api/categories`** — GET returns all categories ordered by name with product count. POST creates with name validation.
+    60→- **`GET/PUT/DELETE /api/categories/[id]`** — Full CRUD. DELETE checks for related products before deleting.
+    61→
+    62→#### Suppliers (2 files)
+    63→- **`GET/POST /api/suppliers`** — Paginated list with search (name/phone/email). POST with email validation.
+    64→- **`GET/PUT/DELETE /api/suppliers/[id]`** — Full CRUD. DELETE checks for related purchases.
+    65→
+    66→#### Customers (2 files)
+    67→- **`GET/POST /api/customers`** — Paginated list with search, includes transaction count. POST with email validation.
+    68→- **`GET/PUT/DELETE /api/customers/[id]`** — Full CRUD. DELETE checks for related transactions.
+    69→
+    70→#### Transactions (3 files)
+    71→- **`GET/POST /api/transactions`** — GET with pagination, search by invoice number, filter (status, paymentMethod, date range via startDate/endDate, branchId). Includes user, customer, items, branch relations. POST creates transaction with auto-generated invoice number, deducts stock for completed sales, restores stock for refunds, adds member points for customers.
+    72→- **`GET/PUT /api/transactions/[id]`** — GET with all relations. PUT supports completing held transactions (deducts stock, adds member points) and cancelling completed transactions (restores stock).
+    73→- **`GET /api/transactions/held`** — Returns all held transactions for a specific user (query param: userId).
+    74→
+    75→#### Purchases (2 files)
+    76→- **`GET/POST /api/purchases`** — GET with pagination, search, filter (status, supplierId, date range). POST creates purchase with auto-generated PO number, updates product stock and costPrice for received purchases.
+    77→- **`GET/PUT/DELETE /api/purchases/[id]`** — PUT supports receiving pending purchases (updates stock). DELETE restores stock for received purchases before deleting.
+    78→
+    79→#### Stock (2 files)
+    80→- **`GET/POST /api/stock`** — GET lists stock adjustments with pagination, filter by type/productId. POST creates adjustment (in/out/adjustment/opname) and updates product stock accordingly.
+    81→- **`POST /api/stock/opname`** — Sets actual stock count for a product, creates opname adjustment record with previous/new stock difference.
+    82→
+    83→#### Settings (3 files)
+    84→- **`GET/PUT /api/settings`** — GET returns all store settings as key-value pairs. PUT accepts `{ settings: { key: value } }` object and upserts each setting.
+    85→- **`GET/PUT /api/settings/tax`** — Manages tax settings (isEnabled, percentage, mode, applyToAll, categoryId). Creates default if none exists.
+    86→- **`GET/PUT /api/settings/service-charge`** — Manages service charge settings (isEnabled, percentage). Creates default if none exists.
+    87→
+    88→#### Dashboard (1 file)
+    89→- **`GET /api/dashboard`** — Returns comprehensive stats in a single response: todaySales, monthSales, totalRevenue, totalProducts, totalCustomers, totalSuppliers, totalTransactions, topProducts (top 5 by quantity), recentTransactions (last 10), lowStockProducts (stock <= minStock), salesChartData & revenueChartData (daily totals for last 30 days with zero-fill for missing dates).
+    90→
+    91→#### Reports (1 file)
+    92→- **`GET /api/reports`** — Supports 9 report types via `type` query param: daily, weekly, monthly, yearly (sales transactions with summary), best_selling (top 20 products by quantity), profit_loss (revenue vs cost of goods sold), customer (spending ranking), supplier (purchase ranking), stock (inventory valuation with low stock alerts). Supports date range (startDate/endDate) and branchId filters.
+    93→
+    94→#### Branches (2 files)
+    95→- **`GET/POST /api/branches`** — GET returns all branches with relation counts. POST creates branch.
+    96→- **`GET/PUT/DELETE /api/branches/[id]`** — Full CRUD. DELETE checks for related users/products/transactions.
+    97→
+    98→### Files created:
+    99→- `src/app/api/products/route.ts`
+   100→- `src/app/api/products/[id]/route.ts`
+   101→- `src/app/api/products/barcode/[barcode]/route.ts`
+   102→- `src/app/api/categories/route.ts`
+   103→- `src/app/api/categories/[id]/route.ts`
+   104→- `src/app/api/suppliers/route.ts`
+   105→- `src/app/api/suppliers/[id]/route.ts`
+   106→- `src/app/api/customers/route.ts`
+   107→- `src/app/api/customers/[id]/route.ts`
+   108→- `src/app/api/transactions/route.ts`
+   109→- `src/app/api/transactions/[id]/route.ts`
+   110→- `src/app/api/transactions/held/route.ts`
+   111→- `src/app/api/purchases/route.ts`
+   112→- `src/app/api/purchases/[id]/route.ts`
+   113→- `src/app/api/stock/route.ts`
+   114→- `src/app/api/stock/opname/route.ts`
+   115→- `src/app/api/settings/route.ts`
+   116→- `src/app/api/settings/tax/route.ts`
+   117→- `src/app/api/settings/service-charge/route.ts`
+   118→- `src/app/api/dashboard/route.ts`
+   119→- `src/app/api/reports/route.ts`
+   120→- `src/app/api/branches/route.ts`
+   121→- `src/app/api/branches/[id]/route.ts`
+   122→
+   123→### Notes:
+   124→- All routes pass ESLint with zero errors.
+   125→- All Next.js 16 async params pattern used (`params: Promise<{ id: string }>` with `await params`).
+   126→- No `any` types used throughout.
+   127→- Pagination standardized with `{ data, total, page, perPage, totalPages }` response format.
+   128→- Business logic integrated: stock deduction on sale, stock restoration on refund/cancel, member points on completed sales, invoice auto-generation.
+   129→
+   130→---
+   131→
+   132→## Task ID: 4-a — Main Application Layout Components
+   133→**Agent:** Main Agent
+   134→**Date:** 2025-07-03
+   135→
+   136→### What was done:
+   137→
+   138→Built all main application layout and auth UI components for the POS application. The app uses a clean, professional design with an emerald green primary color scheme, responsive mobile-first approach, and Framer Motion animations throughout.
+   139→
+   140→#### 1. `globals.css` — Emerald Color Scheme & Theme Support
+   141→- Replaced default neutral color palette with emerald-tinted oklch values for light and dark modes
+   142→- Primary color: `oklch(0.508 0.158 160)` (emerald green) in light, `oklch(0.627 0.194 149)` in dark
+   143→- Background: off-white with subtle green tint `oklch(0.984 0.003 155)`
+   144→- Custom scrollbar styles (thin, 6px, emerald-tinted thumbs) for both light and dark modes
+   145→- Smooth CSS transitions for theme changes with `prefers-reduced-motion` respect
+   146→
+   147→#### 2. `app/layout.tsx` — Root Layout
+   148→- Wrapped app in `ThemeProvider` from `next-themes` (attribute="class", defaultTheme="light")
+   149→- Replaced `Toaster` from `@/components/ui/toaster` with `Toaster` from `@/components/ui/sonner` (rich colors, top-right position)
+   150→- Updated metadata: title "POS Sejahtera", description "Modern Point of Sale System"
+   151→- Set `lang="id"` for Indonesian language
+   152→
+   153→#### 3. `LoginPage.tsx` — Premium Login Page
+   154→- Split layout: left branding panel (desktop, emerald gradient) + right form
+   155→- Mobile: full-screen form with gradient top section
+   156→- Framer Motion entrance animations (slide-in from left/right)
+   157→- react-hook-form + zod v4 validation for email/password
+   158→- Password visibility toggle, remember me checkbox
+   159→- Loading state with spinner on submit
+   160→- POSTs to `/api/auth/login`, stores user via `useAuthStore`, shows success toast
+   161→- Error toast on failure
+   162→- Auto-detects first-load (no users) and shows setup message
+   163→- Subtle demo credentials display: `admin@pos.com` / `admin123`
+   164→
+   165→#### 4. `AppSidebar.tsx` — Desktop Sidebar Navigation
+   166→- 6 navigation sections with 14 total menu items, each with Lucide icons
+   167→- Sections: Menu Utama, Master Data, Transaksi, Laporan, Pengaturan, Administrasi
+   168→- Role-based menu visibility:
+   169→  - **Kasir**: Dashboard, Kasir (POS), Riwayat Transaksi only
+   170→  - **Admin**: All except Pengguna and Cabang
+   171→  - **Super Admin**: Everything
+   172→- Active page highlighted with emerald-600 background
+   173→- Desktop: animated width transition (256px ↔ 68px) with spring physics via Framer Motion
+   174→- Collapse toggle button (ChevronLeft) on desktop
+   175→- Mobile: slides in as overlay with backdrop, closes on nav click
+   176→- User info at bottom (avatar, name, role) + logout button
+   177→- ScrollArea for navigation overflow
+   178→- Uses `useNavStore` and `useAuthStore`
+   179→
+   180→#### 5. `AppHeader.tsx` — Top Header Bar
+   181→- Hamburger menu button (mobile only) to toggle sidebar
+   182→- Dynamic page title based on `currentPage` from `useNavStore`
+   183→- Decorative search bar on desktop (placholder text for future implementation)
+   184→- Notification bell with hardcoded badge count (3)
+   185→- Dark/light mode toggle using `next-themes` with animated Sun/Moon icons
+   186→- User avatar dropdown menu (profile, change password, logout)
+   187→- Sticky header with `backdrop-blur-md` for glass effect
+   188→
+   189→#### 6. `MobileNav.tsx` — Bottom Navigation Bar
+   190→- Fixed to bottom, 5 items: Dashboard, Kasir, Produk, Laporan, Lainnya
+   191→- Active item with animated emerald indicator (Framer Motion `layoutId`)
+   192→- Role-based filtering: Kasir hides Produk and Laporan
+   193→- "Lainnya" button opens a Sheet (bottom) with all additional navigation options
+   194→- Sheet content organized by sections with role filtering
+   195→- Only visible on mobile (`md:hidden`)
+   196→
+   197→#### 7. `AppLayout.tsx` — Main Layout Wrapper
+   198→- Combines AppSidebar + AppHeader + MobileNav + content area
+   199→- Desktop: flex row (sidebar + main)
+   200→- Content area scrolls independently with padding
+   201→- Mobile: extra bottom padding (pb-20) to account for bottom nav
+   202→- Framer Motion `AnimatePresence` with fade+slide page transitions
+   203→- Integrates ProfileDialog
+   204→
+   205→#### 8. `ProfileDialog.tsx` — User Profile Dialog
+   206→- Dialog with tab switcher: "Edit Profil" and "Ubah Password"
+   207→- User summary card (avatar, name, role, branch)
+   208→- Edit profile tab: name, email, phone fields with zod validation
+   209→- Change password tab: old password, new password, confirm with zod refinement
+   210→- PUTs to `/api/auth/[id]` for profile, POSTs to `/api/auth/change-password`
+   211→- Loading states, success/error toasts
+   212→- Triggered from header user dropdown
+   213→
+   214→#### 9. `page.tsx` — Main Page Router
+   215→- Hydrates auth state from `localStorage` on mount
+   216→- Loads store settings from `/api/settings` on authentication
+   217→- Shows skeleton loader during hydration
+   218→- Shows LoginPage when not authenticated
+   219→- Shows AppLayout with page placeholder content when authenticated
+   220→- Dashboard placeholder includes 3 summary cards
+   221→
+   222→### Files created:
+   223→- `src/features/auth/LoginPage.tsx`
+   224→- `src/features/auth/ProfileDialog.tsx`
+   225→- `src/components/layout/AppSidebar.tsx`
+   226→- `src/components/layout/AppHeader.tsx`
+   227→- `src/components/layout/MobileNav.tsx`
+   228→- `src/components/layout/AppLayout.tsx`
+   229→
+   230→### Files modified:
+   231→- `src/app/globals.css` (emerald color scheme, scrollbar, theme transitions)
+   232→- `src/app/layout.tsx` (ThemeProvider, Sonner toaster, metadata)
+   233→- `src/app/page.tsx` (auth flow, layout routing, page placeholders)
+   234→
+   235→### Notes:
+   236→- All files pass ESLint with zero errors
+   237→- Dev server compiles successfully with no errors
+   238→- App returns HTTP 200 on `/`
+   239→- All UI text in Bahasa Indonesia
+   240→- No JSX comments used in `MobileNav.tsx` due to ESLint parser compatibility (Next.js 16 + typescript-eslint)
+   241→- Dark mode fully supported via next-themes with class attribute
+   242→
+   243→---
+   244→
+   245→## Task ID: 5-a — Dashboard Page
+   246→**Agent:** Main Agent
+   247→**Date:** 2025-07-03
+   248→
+   249→### What was done:
+   250→
+   251→Built a comprehensive, production-quality Dashboard page with full data visualization and responsive layout.
+   252→
+   253→#### 1. KPI Cards Row (4 main cards)
+   254→- **Penjualan Hari Ini** — DollarSign icon, emerald color circle, formatted as IDR currency
+   255→- **Penjualan Bulan Ini** — TrendingUp icon, blue color circle
+   256→- **Total Produk** — Package icon, violet color circle
+   257→- **Total Pelanggan** — Users icon, orange color circle
+   258→- Each card has: colored icon circle, formatted value, label, +X% trend indicator with arrow icon
+   259→- Framer Motion stagger animation on mount via `itemVariants`
+   260→
+   261→#### 2. Additional Stats Row (4 mini cards)
+   262→- Total Supplier (Truck icon), Total Transaksi (Receipt icon), Pendapatan (Wallet icon), Cabang (Building2 icon)
+   263→- Simpler design: small icon in primary-tinted rounded-lg, number, label
+   264→- Same stagger animation
+   265→
+   266→#### 3. Charts Section (2-column on desktop, stacked on mobile)
+   267→- **Left: Area Chart** "Tren Penjualan 30 Hari"
+   268→  - Recharts `AreaChart` with emerald gradient fill (`#10b981`)
+   269→  - X axis: dates formatted as DD MMM (Indonesian locale)
+   270→  - Y axis: short IDR format (rb/jt/M)
+   271→  - Custom tooltip showing formatted Rupiah amount
+   272→  - Hidden vertical grid lines, clean minimal axes
+   273→- **Right: Bar Chart** "Produk Terlaris"
+   274→  - Recharts `BarChart` with horizontal layout
+   275→  - Top 5 products by quantity sold, emerald rounded bars
+   276→  - Custom tooltip with product name, quantity, and revenue
+   277→  - Product names truncated at 18 chars with ellipsis
+   278→
+   279→#### 4. Bottom Section (2-column on desktop)
+   280→- **Left: Transaksi Terakhir** — Last 5 transactions in a `ScrollArea`
+   281→  - Invoice number, customer name, formatted amount, status badge, time
+   282→  - Status badges: Selesai (emerald), Menunggu (amber), Ditahan (blue), Dibatalkan (red), Refund (orange)
+   283→  - Hover effect on each row
+   284→- **Right: Stok Menipis** — Low stock products in a `ScrollArea`
+   285→  - Product name, current stock / min stock with unit
+   286→  - Badge: "Habis" (red) for zero stock, "Menipis" (amber) for low stock
+   287→  - Empty state: "Semua stok aman"
+   288→
+   289→#### 5. Data Fetching & States
+   290→- TanStack Query `useQuery` fetching `DashboardStats` from `/api/dashboard`
+   291→- 30-second auto-refetch interval
+   292→- Full skeleton loading state (KPI skeletons, chart skeletons, list skeletons)
+   293→- Error state with AlertTriangle icon and message
+   294→- Empty states for charts and lists
+   295→
+   296→#### 6. Helper Functions
+   297→- `formatRupiah()` — Full IDR currency formatting via `Intl.NumberFormat('id-ID')`
+   298→- `formatShortRupiah()` — Compact format (rb/jt/M) for chart axes
+   299→- `formatDate()` — DD MMM Indonesian locale
+   300→- `formatTime()` — HH:MM Indonesian locale
+   301→- `getStatusBadge()` — Maps transaction status to colored Badge component
+   302→
+   303→#### 7. Animations
+   304→- Framer Motion `containerVariants` with `staggerChildren: 0.1`
+   305→- `itemVariants` with opacity 0→1, y 20→0, duration 0.4s
+   306→- Applied to all sections via `motion.div`
+   307→
+   308→### Files created:
+   309→- `src/features/dashboard/DashboardPage.tsx`
+   310→
+   311→### Notes:
+   312→- Passes ESLint with zero errors
+   313→- Fully responsive (mobile-first): 1 col → 2 col → 4 col grids
+   314→- All text in Bahasa Indonesia
+   315→- Uses shadcn/ui Card, Badge, Skeleton, ScrollArea components
+   316→- Uses Recharts AreaChart and BarChart with custom tooltips
+   317→- React Compiler compatible (memo dependencies use `data` instead of nested properties)
+   318→
+   319→---
+   320→
+   321→## Task ID: 7-a — POS/Cashier Module (POSPage.tsx)
+   322→**Agent:** Main Agent
+   323→**Date:** 2025-07-03
+   324→
+   325→### What was done:
+   326→
+   327→Built the complete POS cashier interface — the core feature of the application — as a single comprehensive component.
+   328→
+   329→#### 1. LEFT PANEL — Product Selection
+   330→
+   331→**Top Bar:**
+   332→- Search input with Search icon for searching products by name/barcode
+   333→- Barcode scan button opening a manual barcode entry dialog (also via F2 shortcut)
+   334→- Category filter pills (horizontal scrollable): dynamically fetched from `/api/categories`
+   335→- Products fetched from `/api/products?isActive=true` with search and category filter via TanStack Query
+   336→
+   337→**Product Grid:**
+   338→- Responsive grid: 1 col mobile, 2 tablet, 3-4 desktop
+   339→- Product cards with colored placeholder (first letter, rotating color palette)
+   340→- Product name (line-clamp-2), IDR formatted price, stock count with unit
+   341→- Stock badges: amber "Menipis" for low stock, red "Habis" for out of stock
+   342→- Out of stock items are grayed out and disabled
+   343→- Click to add to cart with Framer Motion fadeInUp animation
+   344→- Empty state with Package icon when no products found
+   345→- Full skeleton loading state
+   346→
+   347→#### 2. RIGHT PANEL — Cart / Bill
+   348→
+   349→**Desktop:** Sticky right panel (400-420px). **Mobile:** Bottom Sheet/Drawer opened via floating action button.
+   350→
+   351→**Cart Header:**
+   352→- "Keranjang" title with item count Badge
+   353→- Resume held transactions button (shows count of held transactions)
+   354→- Hold transaction button (Pause icon)
+   355→- Clear cart button (Trash2 icon)
+   356→
+   357→**Cart Items List (ScrollArea):**
+   358→- Each item row: product name, unit price × quantity, item total
+   359→- Quantity controls: [-] [qty] [+] with max stock limit
+   360→- Inline discount input (per item)
+   361→- Notes button (Pencil icon → Popover with Textarea)
+   362→- Delete button (X icon)
+   363→- AnimatePresence with cartItemVariants for add/remove animations
+   364→- Empty state when no items
+   365→
+   366→**Calculations Section:**
+   367→- Subtotal (dynamic from cart items)
+   368→- Diskon (total discount, from store)
+   369→- Pajak (from tax config — fetched from `/api/settings/tax`, only shown if enabled)
+   370→- Service Charge (from service charge config — fetched from `/api/settings/service-charge`)
+   371→- Grand Total (bold, large, primary color)
+   372→- Formula: `subtotal → afterDiscount → tax (if exclude mode) → serviceCharge → grandTotal`
+   373→
+   374→**Payment Button:**
+   375→- Large emerald "Bayar" button, full width (also via F9 shortcut)
+   376→
+   377→#### 3. PAYMENT DIALOG
+   378→
+   379→Full-featured payment dialog with:
+   380→
+   381→**Payment Method Selection:**
+   382→- 3×2 grid: Tunai, QRIS, Transfer, Debit, Kredit, E-Wallet
+   383→- Each with Lucide icon and label
+   384→- Active selection highlighted with ring
+   385→
+   386→**Multi-Payment Support:**
+   387→- "Tambah Pembayaran" button to add payment splits
+   388→- List of payment splits with amount inputs and remove buttons
+   389→- Real-time remaining balance display
+   390→
+   391→**Cash Payment:**
+   392→- Quick amount buttons: Uang Pas, 50rb, 100rb, 200rb, 500rb
+   393→- Custom amount input (auto-focus)
+   394→- Calculated change (kembalian) shown in emerald highlight
+   395→- "Kurang" (shortfall) shown in destructive color if underpaying
+   396→
+   397→**Customer Selection:**
+   398→- Popover-based searchable customer dropdown
+   399→- Search by name, phone, email
+   400→- Customers fetched from `/api/customers?perPage=100`
+   401→
+   402→**Notes Field:**
+   403→- Optional transaction notes textarea
+   404→
+   405→**Success Animation:**
+   406→- Framer Motion: CheckCircle2 icon spins in, "Pembayaran Berhasil!" text
+   407→- Auto-transitions to receipt dialog after 1.2s
+   408→
+   409→**Action Buttons:**
+   410→- Cancel (resets payment state)
+   411→- "Proses Pembayaran" (with loading spinner, disabled conditions for underpayment)
+   412→
+   413→#### 4. RECEIPT DIALOG
+   414→
+   415→Thermal receipt style (font-mono, dashed borders, white bg):
+   416→- Store name, address, phone (from useSettingsStore)
+   417→- Invoice number, date/time, cashier name, customer name
+   418→- Items list: name, qty × price, total, per-item discount
+   419→- Subtotal, discount, tax, service charge breakdown
+   420→- Grand Total (bold)
+   421→- Payment method, paid amount, change
+   422→- Notes (if any)
+   423→- Footer: "Terima Kasih!" + save receipt notice
+   424→- Print button (window.print) + Selesai button
+   425→
+   426→#### 5. HOLD TRANSACTIONS
+   427→
+   428→- "Tahan" button creates a `status: 'held'` transaction via POST `/api/transactions`
+   429→- Held transactions fetched via GET `/api/transactions/held?userId=...`
+   430→- Dialog shows list of held transactions with item count, time, grand total
+   431→- "Lanjutkan" button restores cart from held transaction items
+   432→- Cart cleared before restoring to prevent mixing
+   433→
+   434→#### 6. BARCODE SCANNING
+   435→
+   436→- Manual barcode entry dialog with Input field + Enter to search
+   437→- Searches via GET `/api/products/barcode/[barcode]`
+   438→- If found and in stock → adds to cart with success toast
+   439→- If not found or out of stock → error toast
+   440→- F2 keyboard shortcut to open dialog
+   441→
+   442→#### 7. STATE MANAGEMENT
+   443→
+   444→- `useCartStore` for all cart operations (items, customerId, discount, notes, held state)
+   445→- `useSettingsStore` for tax and service charge config (synced from API on fetch)
+   446→- `useAuthStore` for current user info (userId, name, branchId)
+   447→- TanStack Query for: products, categories, tax settings, SC settings, customers, held transactions
+   448→- `useMutation` for creating transactions (POST `/api/transactions`)
+   449→- Query invalidation after successful transaction
+   450→
+   451→#### 8. RESPONSIVE DESIGN
+   452→
+   453→- **Desktop (≥768px):** Split view — left 60% product grid, right 40% cart panel (border-l)
+   454→- **Mobile (<768px):** Full-width product grid + floating cart FAB button at bottom
+   455→- FAB shows item count and total amount
+   456→- Cart opens as bottom Sheet (85vh height, rounded top)
+   457→- Category pills horizontally scrollable on all sizes
+   458→
+   459→#### 9. KEYBOARD SHORTCUTS
+   460→- F2: Open barcode dialog
+   461→- F9: Open payment dialog
+   462→- Escape: Close dialogs
+   463→
+   464→#### 10. ALL TEXT IN BAHASA INDONESIA
+   465→
+   466→### Files created:
+   467→- `src/features/pos/POSPage.tsx`
+   468→
+   469→### Notes:
+   470→- Passes ESLint with zero errors
+   471→- All text in Bahasa Indonesia
+   472→- Uses shadcn/ui: Button, Input, Badge, Separator, ScrollArea, Skeleton, Dialog, Sheet, Popover, Textarea, Label
+   473→- Framer Motion animations throughout (product cards, cart items, payment success, scale transitions)
+   474→- Sonner toast notifications for add-to-cart, errors, hold/resume actions
+   475→- Dynamic tax/SC calculations synced from server settings
+   476→- Production-quality error handling and loading states
+   477→
+   478→---
+   479→
+   480→## Task ID: 6-b — Products Management Page
+   481→**Agent:** Main Agent
+   482→**Date:** 2025-07-03
+   483→
+   484→### What was done:
+   485→
+   486→Built a comprehensive, production-quality Products management page (`ProductsPage.tsx`) as a single client component with full CRUD operations, filtering, sorting, pagination, and responsive design.
+   487→
+   488→#### 1. Page Header
+   489→- "Produk" title with descriptive subtitle "Kelola daftar produk toko Anda"
+   490→- "Tambah Produk" button with Plus icon and emerald-600 color
+   491→- Framer Motion stagger entrance animations
+   492→
+   493→#### 2. Filter/Search Bar
+   494→- Search input with Search icon: searches by name, barcode, or SKU
+   495→- Category filter: Select dropdown populated from `/api/categories` query
+   496→- Status filter: Select dropdown with options "Aktif", "Tidak Aktif"
+   497→- All filters reset page to 1 on change
+   498→- Responsive layout: stacked on mobile, row on desktop
+   499→
+   500→#### 3. Data Table (TanStack Table + shadcn/ui Table)
+   501→- **Columns:** No, Foto, Nama, Barcode, SKU, Kategori, Harga Modal, Harga Jual, Stok, Status, Aksi
+   502→- **Sortable columns:** Nama, Harga Modal, Harga Jual, Stok (with sort direction icons: ChevronUp/ChevronDown/ChevronsUpDown)
+   503→- **Foto column:** Color-coded thumbnail with initials (hash-based color palette from product name), falls back to 40×40 avatar placeholder
+   504→- **Status:** Colored Badge — green "Aktif" / gray "Tidak Aktif"
+   505→- **Stock:** Color-coded — red (≤ minStock), amber (≤ 2×minStock), normal otherwise
+   506→- **Prices:** Formatted as IDR via `Intl.NumberFormat('id-ID')`
+   507→- **Actions:** DropdownMenu with Edit (Pencil icon) and Hapus (Trash2 icon, destructive variant)
+   508→- **Skeleton loading:** Full row skeletons matching column layout (10-11 skeleton cells per row)
+   509→- **Empty state:** Package icon + contextual message based on active filters
+   510→- **Responsive:** Horizontal scroll via `overflow-x-auto` on the table container
+   511→- Manual pagination (server-side) synced with URL params
+   512→
+   513→#### 4. Pagination
+   514→- Page info: "Menampilkan 1-10 dari 50"
+   515→- Per-page selector: 10, 25, 50 via Select dropdown
+   516→- Previous/Next buttons with ChevronLeft/ChevronRight icons
+   517→- Current page badge with "dari N" label
+   518→- Disabled states on first/last page
+   519→- Mobile-friendly text labels ("Sebelumnya"/"Berikutnya" on small screens)
+   520→
+   521→#### 5. Add/Edit Product Dialog
+   522→- Desktop: Dialog (max-w-2xl) with scrollable form (max-h-[60vh])
+   523→- Mobile: Sheet (bottom, 85vh) with same form content
+   524→- Zod validation schema:
+   525→  - `name`: string, min 2 chars (required)
+   526→  - `barcode`: string, optional
+   527→  - `sku`: string, optional
+   528→  - `categoryId`: string, optional (Select populated from categories query)
+   529→  - `unit`: string, default "pcs"
+   530→  - `costPrice`: number, ≥ 0 (required)
+   531→  - `sellPrice`: number, > 0 (required)
+   532→  - `stock`: number, ≥ 0, default 0
+   533→  - `minStock`: number, ≥ 0, default 5
+   534→  - `image`: string, optional (text input + ImagePlus button prompting filename)
+   535→  - `isActive`: boolean, default true (Switch toggle in bordered container)
+   536→- Form fields: 2-column grid on desktop, stacked on mobile
+   537→- react-hook-form + zodResolver integration
+   538→- Save/Cancel buttons with loading spinner states
+   539→- POST to `/api/products` for create, PUT to `/api/products/[id]` for update
+   540→- Query invalidation after successful mutation
+   541→
+   542→#### 6. Delete Confirmation Dialog (AlertDialog)
+   543→- Title: "Hapus Produk?"
+   544→- Description: Shows product name in bold, "akan dinonaktifkan. Lanjutkan?"
+   545→- Cancel + Hapus buttons (destructive red)
+   546→- DELETE to `/api/products/[id]` (soft delete — sets isActive=false)
+   547→- Loading spinner during deletion
+   548→- Query invalidation after success
+   549→
+   550→#### 7. Data Fetching & State
+   551→- **TanStack Query `useQuery`** for products list and categories
+   552→- **TanStack Query `useMutation`** for create, update, and delete
+   553→- Query key includes all filter state: `[products, page, perPage, search, categoryId, statusFilter, sorting]`
+   554→- `queryClient.invalidateQueries` on all successful mutations
+   555→- Toast notifications via Sonner for all operations
+   556→
+   557→#### 8. Helper Functions
+   558→- `formatRupiah()` — Full IDR currency formatting via `Intl.NumberFormat('id-ID')`
+   559→- `getStockColor()` — Returns Tailwind classes: red/amber/normal based on stock vs minStock
+   560→- `getStatusBadge()` — Returns colored Badge for active/inactive status
+   561→- `getInitials()` — Extracts 1-2 char initials from product name
+   562→- `getColorForName()` — Deterministic hash-based color palette selection
+   563→
+   564→#### 9. Animations
+   565→- Framer Motion `containerVariants` with `staggerChildren: 0.08`
+   566→- `itemVariants` with opacity 0→1, y 20→0
+   567→- Applied to page header, filter bar, and table section
+   568→
+   569→### Files created:
+   570→- `src/features/products/ProductsPage.tsx`
+   571→
+   572→### Notes:
+   573→- Passes ESLint with zero errors (1 React Compiler warning about TanStack Table's useReactTable — known library incompatibility, not a code issue)
+   574→- All text in Bahasa Indonesia
+   575→- Uses shadcn/ui: Button, Input, Badge, Skeleton, Table, Dialog, Sheet, AlertDialog, Select, DropdownMenu, Switch, Label, Form components
+   576→- Fully responsive (mobile-first): stacked filters → row filters, Dialog → Sheet on mobile, horizontal table scroll
+   577→- TanStack Table v8 with manual server-side pagination
+   578→- react-hook-form + zod v4 + @hookform/resolvers/zod v5
+   579→---
+   580→
+   581→## Task ID: 8-a — Category, Supplier & Customer Management Pages
+   582→**Agent:** Main Agent
+   583→**Date:** 2025-07-03
+   584→
+   585→### What was done:
+   586→
+   587→1. **Created `src/features/categories/CategoriesPage.tsx`** — Category management page:
+   588→   - Page header: "Kategori" with "Tambah Kategori" button (emerald)
+   589→   - Table columns: No, Nama, Deskripsi, Jumlah Produk (Badge secondary), Status, Aksi
+   590→   - Client-side search + TanStack Table pagination (API returns all categories without pagination)
+   591→   - Add/Edit dialog with: Nama (required), Deskripsi (optional textarea), Status (Switch in bordered card)
+   592→   - Delete confirmation via AlertDialog
+   593→   - Desktop: Dialog, Mobile: Sheet (bottom)
+   594→   - DropdownMenu per row: Edit + Hapus
+   595→   - Skeleton loading states, empty states with FolderOpen icon
+   596→   - Framer Motion stagger animations
+   597→   - Handles `_count.products` → `productCount` mapping from API response
+   598→
+   599→2. **Created `src/features/suppliers/SuppliersPage.tsx`** — Supplier management page:
+   600→   - Page header: "Supplier" with "Tambah Supplier" button (emerald)
+   601→   - Table columns: No, Nama, Telepon, Email, Alamat, Status, Aksi
+   602→   - Server-side pagination + search via query params (page/perPage/search)
+   603→   - Per-page selector (10/25/50) matching ProductsPage pattern
+   604→   - Add/Edit dialog with: Nama (required), Telepon, Email, Alamat (textarea), Status (Switch)
+   605→   - Delete confirmation, DropdownMenu actions
+   606→   - Skeleton loading, empty states with Truck icon
+   607→   - Framer Motion animations, responsive layout
+   608→
+   609→3. **Created `src/features/customers/CustomersPage.tsx`** — Customer management page:
+   610→   - Page header: "Pelanggan" with "Tambah Pelanggan" button (emerald)
+   611→   - Table columns: No, Nama, Telepon, Email, Alamat, Poin Member (amber Badge), Status, Aksi
+   612→   - Poin Member displayed as amber badge: "{n} poin"
+   613→   - Server-side pagination + search via query params
+   614→   - Per-page selector (10/25/50)
+   615→   - Add/Edit dialog with: Nama (required), Telepon, Email, Alamat (textarea), Poin Member (number input, min 0, default 0), Status (Switch)
+   616→   - Delete confirmation, DropdownMenu actions
+   617→   - Skeleton loading, empty states with Users icon
+   618→   - Framer Motion animations, responsive layout
+   619→
+   620→### Common patterns across all 3 pages:
+   621→- `'use client'` component
+   622→- TanStack Query: `useQuery` for data, `useMutation` for CRUD, `queryClient.invalidateQueries` after mutations
+   623→- TanStack Table v8 with `useReactTable`, `getCoreRowModel`, `getPaginationRowModel`
+   624→- Categories: client-side filtering + pagination; Suppliers/Customers: manual server-side pagination
+   625→- react-hook-form + zod validation for all forms
+   626→- Toast notifications via `sonner` on success/error
+   627→- Proper TypeScript types (no `any`)
+   628→- All text in Bahasa Indonesia
+   629→- shadcn/ui: Button, Input, Badge, Skeleton, Table, Dialog, Sheet, AlertDialog, Select, DropdownMenu, Switch, Form, Textarea
+   630→- Responsive: horizontal scroll on mobile for tables, Dialog (desktop) + Sheet bottom (mobile)
+   631→- Framer Motion container stagger + item slide-up animations
+   632→- Status badges: emerald (Aktif), gray (Tidak Aktif)
+   633→- Emerald green action buttons matching existing design system
+   634→
+   635→### Files created:
+   636→- `src/features/categories/CategoriesPage.tsx`
+   637→- `src/features/suppliers/SuppliersPage.tsx`
+   638→- `src/features/customers/CustomersPage.tsx`
+   639→
+   640→### Notes:
+   641→- Passes ESLint with zero errors (only TanStack Table useReactTable React Compiler warnings — known library incompatibility, same as ProductsPage)
+   642→- All 3 pages follow the exact same code patterns and design language as the existing ProductsPage
+   643→
+   644→## Task ID: 8-b — Transactions & Purchases Pages
+   645→**Agent:** Main Agent
+   646→**Date:** 2025-07-03
+   647→
+   648→### What was done:
+   649→
+   650→1. **Created `src/features/transactions/TransactionsPage.tsx`** — Full transaction history page:
+   651→   - Page header: "Riwayat Transaksi" with filter toggle button showing active filter count
+   652→   - Collapsible filter panel: Status (completed/cancelled/held), Payment Method (tunai/qris/transfer/debit/kredit/e-wallet), Start/End date inputs with calendar icons
+   653→   - Search bar for invoice number lookup
+   654→   - Table columns: No, Invoice, Tanggal, Pelanggan, Kasir, Metode Bayar, Total, Status, Aksi
+   655→   - Status badges: completed=green (Selesai), cancelled=red (Dibatalkan), held=amber (Ditahan)
+   656→   - Payment method badges with icons: tunai=green+Banknote, qris=purple+QrCode, transfer=blue+ArrowLeftRight, debit=cyan+CreditCard, kredit=orange+CreditCard, e-wallet=pink+Smartphone
+   657→   - Total formatted as IDR using `Intl.NumberFormat`
+   658→   - Clickable rows + "Detail" button to open detail dialog
+   659→   - Detail dialog: transaction info grid (invoice, date, customer, cashier, payment method, status, notes), items table (product, qty, price, discount, total), payment breakdown (subtotal, discount, tax, service charge, grand total, paid, change)
+   660→   - Pagination with per-page selector (10/25/50)
+   661→   - Skeleton loading, empty states with Receipt icon
+   662→   - API: `GET /api/transactions?page&perPage&search&status&paymentMethod&startDate&endDate`, `GET /api/transactions/[id]` (unwraps `{data:...}`)
+   663→
+   664→2. **Created `src/features/purchases/PurchasesPage.tsx`** — Purchase management page:
+   665→   - Page header: "Pembelian Barang" with "Tambah Pembelian" button
+   666→   - Search bar for invoice number lookup
+   667→   - Table columns: No, Invoice, Tanggal, Supplier, Total, Status, Aksi
+   668→   - Status badges: received=green (Diterima), pending=amber (Tertunda), cancelled=red (Dibatalkan)
+   669→   - Add Purchase dialog with:
+   670→     - Supplier select (fetched from `/api/suppliers?perPage=100`)
+   671→     - Notes textarea
+   672→     - Dynamic items list with `useFieldArray`: Product select (fetched from `/api/products?perPage=200`, shows stock info), Qty input, Harga Beli input (auto-populated from product's costPrice on selection), auto-calculated total per row
+   673→     - Grand total calculated via `form.watch('items')` + `useMemo`
+   674→     - Add item / remove item buttons (minimum 1 item)
+   675→   - Zod validation: supplier required, min 1 item, qty >= 1, costPrice >= 0
+   676→   - On save: POST to `/api/purchases` (backend updates stock for received status), invalidates purchases & products queries
+   677→   - Detail dialog: purchase info (invoice, date, supplier, status, notes), items table with product name from relation, grand total
+   678→   - Pagination with per-page selector
+   679→   - Skeleton loading, empty states with PackageOpen icon
+   680→   - API: `GET/POST /api/purchases`, `GET /api/purchases/[id]`
+   681→
+   682→### Files created:
+   683→- `src/features/transactions/TransactionsPage.tsx`
+   684→- `src/features/purchases/PurchasesPage.tsx`
+   685→
+   686→### Notes:
+   687→- Passes ESLint with zero errors (only known TanStack Table / React Hook Form React Compiler warnings)
+   688→- Both pages follow the same code patterns, animation variants, and design language as existing feature pages
+   689→- Proper API response unwrapping (`json.data as T`) for detail endpoints
+   690→- All text in Bahasa Indonesia
+   691→
+   692→## Task ID: 9-a — Stock, Reports & Settings Pages
+   693→**Agent:** Main Agent
+   694→**Date:** 2025-07-03
+   695→
+   696→### What was done:
+   697→
+   698→1. **Created `src/features/stock/StockPage.tsx`** — Stock management page with 4 tabs:
+   699→   - **Riwayat Stok (default)**: Paginated table with columns: No, Tanggal, Produk, Tipe (Masuk/Keluar/Adjustment/Opname), Jumlah, Stok Sebelum, Stok Sesudah, Alasan, User. Color-coded badges (green/red/blue/amber). Filters: search product, type select, date range. Pagination with prev/next. API: `GET /api/stock?page&perPage&type&search&startDate&endDate`
+   700→   - **Stok Masuk**: Form with searchable product select (Command/Popover), quantity, reason. Shows current stock & price comparison card on product selection. POST to `/api/stock` with type='in'.
+   701→   - **Stok Keluar**: Same as above but shows max stock warning, destructive styled submit button. POST to `/api/stock` with type='out'.
+   702→   - **Stock Opname**: Searchable product select, actual stock number input. Live comparison card showing system stock → actual stock with color-coded difference indicator (green for surplus, red for deficit). POST to `/api/stock/opname`.
+   703→   - Reusable `ProductSearchSelect` component with Command combobox fetching from `/api/products?search=`
+   704→   - All forms use react-hook-form + zod, TanStack Query mutations, toast on success/error
+   705→
+   706→2. **Created `src/features/reports/ReportsPage.tsx`** — Reports page with 5 tabs:
+   707→   - **Penjualan (default)**: Date range filter with "Bulan Ini" quick button. 3 summary cards (Total Transaksi, Total Pendapatan, Rata-rata per Transaksi). Recharts LineChart showing daily revenue. Daily breakdown table (Tanggal, Jumlah Transaksi, Total Pendapatan). API: `GET /api/reports?type=daily&startDate&endDate`
+   708→   - **Produk Terlaris**: Date range filter. Horizontal BarChart (Recharts, layout=vertical) showing top 10 products by quantity sold. Table: Peringkat (badge for top 3), Nama Produk, Qty Terjual, Pendapatan. API: `GET /api/reports?type=best_selling`
+   709→   - **Laba Rugi**: Date range filter. 4 summary cards (Total Pendapatan, Total HPP, Laba Kotor, Margin %). Grouped BarChart showing daily profit vs cost. API: `GET /api/reports?type=profit_loss`
+   710→   - **Pelanggan**: Date range filter. Table: No, Nama Pelanggan, Total Transaksi, Total Belanja, Poin Member (fetched from `/api/customers`). API: `GET /api/reports?type=customer`
+   711→   - **Stok**: 3 summary cards (Total Produk, Stok Rendah, Stok Habis). Table: Nama Produk, Stok Saat Ini, Min. Stok, Status (Habis=red, Rendah=amber, Aman=green badges). API: `GET /api/reports?type=stock`
+   712→   - All charts use shadcn/ui `ChartContainer` with proper `ChartConfig`, `ChartTooltip` with `ChartTooltipContent`
+   713→
+   714→3. **Created `src/features/settings/SettingsPage.tsx`** — Store settings page with 3 card sections:
+   715→   - **Informasi Toko**: Nama Toko, Alamat (textarea), Telepon, Email, Mata Uang (default "Rp"), Zona Waktu (select: WIB/WITA/WIT). react-hook-form + zod. GET/PUT `/api/settings` with key-value pairs.
+   716→   - **Pajak**: Switch for Pajak Aktif, percentage input, RadioGroup for Include/Exclude Tax mode (styled as selectable cards), Switch for Terapkan ke Semua Produk. Disabled state (opacity-50, pointer-events-none) when tax is off. GET/PUT `/api/settings/tax`.
+   717→   - **Service Charge**: Switch for aktif, percentage input with quick buttons (5%, 10%, 15%) that auto-fill. Disabled state when off. GET/PUT `/api/settings/service-charge`.
+   718→   - All sections: skeleton loading, form pre-populated from API via `values` prop on `useForm`, toast on save
+   719→
+   720→### Files created:
+   721→- `src/features/stock/StockPage.tsx`
+   722→- `src/features/reports/ReportsPage.tsx`
+   723→- `src/features/settings/SettingsPage.tsx`
+   724→
+   725→### Notes:
+   726→- Passes ESLint with zero errors (only pre-existing React Compiler warnings for TanStack Table, react-hook-form `watch()` — known library incompatibilities)
+   727→- All 3 pages use 'use client', TanStack Query, Framer Motion animations, responsive design
+   728→- All text in Bahasa Indonesia
+   729→- Recharts charts use shadcn/ui ChartContainer with ChartConfig for consistent theming
+   730→- formatRupiah helper used throughout for IDR currency formatting
+   731→
+   732→## Task ID: 10-a — Admin Pages: Branch Management & User Management
+   733→**Agent:** Main Agent
+   734→**Date:** 2025-07-03
+   735→
+   736→### What was done:
+   737→
+   738→1. **Created `/src/features/branches/BranchesPage.tsx`** — Branch management page (super_admin only):
+   739→   - Page header with "Cabang" title and "Tambah Cabang" button
+   740→   - Search bar for filtering branches by name, address, phone, or email
+   741→   - **Cards grid** layout (responsive: 1 col mobile, 2 cols md, 3 cols xl) showing:
+   742→     - Branch name with Building2 icon, address, phone, email
+   743→     - Stats row: Product count, Transaction count, User count (via `_count` from API)
+   744→     - Active/Inactive badge (green/gray)
+   745→     - Edit/Delete dropdown actions (appears on hover)
+   746→   - **Add dialog**: Nama (required), Alamat, Telepon, Email, Status (Switch) — uses Dialog for desktop, Sheet for mobile
+   747→   - **Edit dialog**: Same fields pre-populated with existing branch data
+   748→   - **Delete confirmation** via AlertDialog with descriptive text
+   749→   - Skeleton loading state (6 card placeholders)
+   750→   - Empty state with Building2 icon and contextual message
+   751→   - Framer Motion animations (staggered card entrance)
+   752→   - API: GET/POST `/api/branches`, GET/PUT/DELETE `/api/branches/[id]`
+   753→
+   754→2. **Created `/src/features/users/UsersPage.tsx`** — User management page (super_admin only):
+   755→   - Page header with "Pengguna" title and "Tambah Pengguna" button
+   756→   - Search bar with 300ms debounce for server-side search
+   757→   - **Table** layout with columns: No, Nama, Email, Telepon, Role, Cabang, Status, Aksi
+   758→   - **Role badges**: super_admin=red, admin=blue, cashier=green with distinct styles
+   759→   - **Status badges**: Aktif (green) / Tidak Aktif (gray)
+   760→   - Server-side pagination with page/limit via API query params
+   761→   - **Add dialog**: Nama (required), Email (required), Password (required), Telepon, Role (Select: super_admin/admin/cashier), Cabang (Select from `/api/branches`), Status (Switch)
+   762→   - **Edit dialog**: Same fields, password optional (label says "kosongkan jika tidak diubah")
+   763→   - **Delete confirmation** with note about soft-delete for users with transactions
+   764→   - Separate form schemas for create (password required) vs edit (password optional)
+   765→   - Skeleton loading state (row placeholders), empty state with UserCog icon
+   766→   - API: GET `/api/users`, POST `/api/auth/register`, GET/PUT/DELETE `/api/auth/[id]`
+   767→
+   768→### Patterns followed:
+   769→- `'use client'` directive, TanStack Query for data fetching/mutation, react-hook-form + zod for form validation
+   770→- Framer Motion staggered animations for container/item/card variants
+   771→- shadcn/ui components: Dialog/Sheet (desktop/mobile), AlertDialog, DropdownMenu, Select, Switch, Badge, Table, Skeleton, Card
+   772→- All text in Bahasa Indonesia
+   773→- Toast notifications via sonner for success/error feedback
+   774→- Responsive design with mobile-first approach (Sheet for mobile forms)
+   775→- Branch data fetched separately for the branch select dropdown in UsersPage
+   776→
+   777→### Notes:
+   778→- Passes ESLint with zero errors (only pre-existing React Compiler warnings for TanStack Table — known library incompatibility)
+   779→- Both pages follow the exact same patterns as existing pages (CategoriesPage, SuppliersPage) for consistency
+   780→- BranchesPage uses Card grid layout (as specified) while UsersPage uses Table layout (as specified)
+   781→- Branch `_count` data (users, products, transactions) displayed in card stats row
+   782→- Users API sends `x-user-role: super_admin` header for authorization
+   783→

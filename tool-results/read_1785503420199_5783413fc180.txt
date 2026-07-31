@@ -1,0 +1,713 @@
+   938→              <Input
+   939→                ref={searchRef}
+   940→                placeholder="Cari produk atau barcode... (F2)")
+   941→                className="pl-9 h-10"
+   942→                value={searchQuery}
+   943→                onChange={(e) => setSearchQuery(e.target.value)}
+   944→              />
+   945→            </div>
+   946→            <Button
+   947→              variant="outline"
+   948→              className="h-10 gap-2"
+   949→              onClick={() => {
+   950→                setBarcodeDialogOpen(true);
+   951→                setTimeout(() => barcodeInputRef.current?.focus(), 100);
+   952→              }}
+   953→            >
+   954→              <ScanBarcode className="size-4" />
+   955→              <span className="hidden sm:inline">Barcode</span>
+   956→            </Button>
+   957→          </div>
+   958→
+   959→          {/* Category Pills */}
+   960→          <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+   961→            <button
+   962→              className={cn(
+   963→                'shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-colors',
+   964→                selectedCategory === 'all'
+   965→                  ? 'bg-primary text-primary-foreground'
+   966→                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+   967→              )}
+   968→              onClick={() => setSelectedCategory('all')}
+   969→            >
+   970→              Semua
+   971→            </button>
+   972→            {categoriesLoading
+   973→              ? Array.from({ length: 4 }).map((_, i) => (
+   974→                  <Skeleton key={i} className="h-7 w-20 shrink-0 rounded-full" />
+   975→                ))
+   976→              : categories.map((cat) => (
+   977→                  <button
+   978→                    key={cat.id}
+   979→                    className={cn(
+   980→                      'shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-colors',
+   981→                      selectedCategory === cat.id
+   982→                        ? 'bg-primary text-primary-foreground'
+   983→                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+   984→                    )}
+   985→                    onClick={() => setSelectedCategory(cat.id)}
+   986→                  >
+   987→                    {cat.name}
+   988→                  </button>
+   989→                ))}
+   990→          </div>
+   991→        </div>
+   992→
+   993→        {/* Product Grid */}
+   994→        <div className="flex-1 overflow-y-auto p-3 md:p-4">
+   995→          {productsLoading ? (
+   996→            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+   997→              {Array.from({ length: 12 }).map((_, i) => (
+   998→                <div
+   999→                  key={i}
+  1000→                  className="flex flex-col rounded-xl border bg-card p-3"
+  1001→                >
+  1002→                  <Skeleton className="mb-3 h-20 w-full rounded-lg" />
+  1003→                  <Skeleton className="h-4 w-3/4" />
+  1004→                  <Skeleton className="mt-2 h-4 w-1/2" />
+  1005→                  <Skeleton className="mt-2 h-3 w-1/3" />
+  1006→                </div>
+  1007→              ))}
+  1008→            </div>
+  1009→          ) : filteredProducts.length === 0 ? (
+  1010→            <motion.div
+  1011→              {...fadeInUp}
+  1012→              className="flex flex-col items-center justify-center py-20 text-center"
+  1013→            >
+  1014→              <div className="mb-4 flex size-20 items-center justify-center rounded-full bg-muted">
+  1015→                <Package className="size-9 text-muted-foreground" />
+  1016→              </div>
+  1017→              <p className="text-base font-medium text-muted-foreground">
+  1018→                Produk tidak ditemukan
+  1019→              </p>
+  1020→              <p className="mt-1 text-sm text-muted-foreground/70">
+  1021→                Coba ubah kata kunci atau kategori pencarian
+  1022→              </p>
+  1023→            </motion.div>
+  1024→          ) : (
+  1025→            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+  1026→              {filteredProducts.map((product, i) => renderProductCard(product, i))}
+  1027→            </div>
+  1028→          )}
+  1029→        </div>
+  1030→      </div>
+  1031→
+  1032→      {/* RIGHT PANEL: Cart (Desktop) */}
+  1033→      <div className="hidden md:flex w-[400px] xl:w-[420px] flex-shrink-0 flex-col border-l bg-background">
+  1034→        {renderCartContent()}
+  1035→      </div>
+  1036→
+  1037→      {/* Mobile Cart FAB + Sheet */}
+  1038→      <div className="md:hidden">
+  1039→        {/* FAB */}
+  1040→        <AnimatePresence>
+  1041→          {cart.items.length > 0 && (
+  1042→            <motion.div
+  1043→              initial={{ opacity: 0, scale: 0.8, y: 20 }}
+  1044→              animate={{ opacity: 1, scale: 1, y: 0 }}
+  1045→              exit={{ opacity: 0, scale: 0.8, y: 20 }}
+  1046→              className="fixed bottom-20 left-4 right-4 z-40"
+  1047→            >
+  1048→              <Button
+  1049→                size="lg"
+  1050→                className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-2xl"
+  1051→                onClick={() => setCartSheetOpen(true)}
+  1052→              >
+  1053→                <ShoppingCart className="size-5" />
+  1054→                <span className="font-semibold">
+  1055→                  {totalItems} Item — {formatRupiah(calculations.grandTotal)}
+  1056→                </span>
+  1057→                <ChevronDown className="size-4 ml-auto" />
+  1058→              </Button>
+  1059→            </motion.div>
+  1060→          )}
+  1061→        </AnimatePresence>
+  1062→
+  1063→        {/* Cart Sheet (Bottom) */}
+  1064→        <Sheet open={cartSheetOpen} onOpenChange={setCartSheetOpen}>
+  1065→          <SheetContent side="bottom" className="h-[85vh] rounded-t-2xl p-0">
+  1066→            <SheetHeader className="px-4 pt-2 pb-0">
+  1067→              <SheetTitle>Keranjang Belanja</SheetTitle>
+  1068→              <SheetDescription>
+  1069→                {totalItems} item — Total {formatRupiah(calculations.grandTotal)}
+  1070→              </SheetDescription>
+  1071→            </SheetHeader>
+  1072→            <div className="mt-2 flex-1 overflow-hidden">
+  1073→              {renderCartContent()}
+  1074→            </div>
+  1075→          </SheetContent>
+  1076→        </Sheet>
+  1077→      </div>
+  1078→
+  1079→      {/* ═══ BARCODE DIALOG ═══ */}
+  1080→      <Dialog open={barcodeDialogOpen} onOpenChange={setBarcodeDialogOpen}>
+  1081→        <DialogContent className="sm:max-w-md">
+  1082→          <DialogHeader>
+  1083→            <DialogTitle className="flex items-center gap-2">
+  1084→              <ScanBarcode className="size-5" />
+  1085→              Scan Barcode
+  1086→            </DialogTitle>
+  1087→            <DialogDescription>
+  1088→              Masukkan kode barcode untuk mencari produk
+  1089→            </DialogDescription>
+  1090→          </DialogHeader>
+  1091→          <div className="flex gap-2">
+  1092→            <Input
+  1093→              ref={barcodeInputRef}
+  1094→              placeholder="Ketik atau scan barcode..."
+  1095→              value={barcodeInput}
+  1096→              onChange={(e) => setBarcodeInput(e.target.value)}
+  1097→              onKeyDown={(e) => {
+  1098→                if (e.key === 'Enter') handleBarcodeSearch();
+  1099→              }}
+  1100→              className="flex-1"
+  1101→              autoFocus
+  1102→            />
+  1103→            <Button
+  1104→              onClick={handleBarcodeSearch}
+  1105→              disabled={!barcodeInput.trim()}
+  1106→            >
+  1107→              Cari
+  1108→            </Button>
+  1109→          </div>
+  1110→          <p className="text-xs text-muted-foreground">
+  1111→            Tekan <kbd className="rounded border bg-muted px-1 py-0.5 text-[10px] font-mono">Enter</kbd> untuk mencari atau <kbd className="rounded border bg-muted px-1 py-0.5 text-[10px] font-mono">Esc</kbd> untuk menutup
+  1112→          </p>
+  1113→        </DialogContent>
+  1114→      </Dialog>
+  1115→
+  1116→      {/* ═══ HOLD TRANSACTIONS DIALOG ═══ */}
+  1117→      <Dialog open={holdDialogOpen} onOpenChange={setHoldDialogOpen}>
+  1118→        <DialogContent className="sm:max-w-lg">
+  1119→          <DialogHeader>
+  1120→            <DialogTitle className="flex items-center gap-2">
+  1121→              <Pause className="size-5" />
+  1122→              Transaksi Ditahan
+  1123→            </DialogTitle>
+  1124→            <DialogDescription>
+  1125→              {heldTransactions.length} transaksi sedang ditahan
+  1126→            </DialogDescription>
+  1127→          </DialogHeader>
+  1128→          <ScrollArea className="max-h-80">
+  1129→            {heldTransactions.length === 0 ? (
+  1130→              <div className="py-8 text-center text-sm text-muted-foreground">
+  1131→                Tidak ada transaksi yang ditahan
+  1132→              </div>
+  1133→            ) : (
+  1134→              <div className="space-y-2 pr-3">
+  1135→                {heldTransactions.map((t) => (
+  1136→                  <div
+  1137→                    key={t.id}
+  1138→                    className="flex items-center justify-between rounded-lg border p-3"
+  1139→                  >
+  1140→                    <div>
+  1141→                      <p className="text-sm font-medium">
+  1142→                        {t.items?.length} item
+  1143→                      </p>
+  1144→                      <p className="text-xs text-muted-foreground">
+  1145→                        {t.heldAt ? formatDateTime(t.heldAt) : ''}
+  1146→                      </p>
+  1147→                    </div>
+  1148→                    <div className="flex items-center gap-3">
+  1149→                      <span className="text-sm font-bold text-primary">
+  1150→                        {formatRupiah(t.grandTotal)}
+  1151→                      </span>
+  1152→                      <Button
+  1153→                        size="sm"
+  1154→                        className="h-8 gap-1"
+  1155→                        onClick={() => handleResumeHeld(t)}
+  1156→                      >
+  1157→                        <Play className="size-3.5" />
+  1158→                        Lanjutkan
+  1159→                      </Button>
+  1160→                    </div>
+  1161→                  </div>
+  1162→                ))}
+  1163→              </div>
+  1164→            )}
+  1165→          </ScrollArea>
+  1166→        </DialogContent>
+  1167→      </Dialog>
+  1168→
+  1169→      {/* ═══ PAYMENT DIALOG ═══ */}
+  1170→      <Dialog
+  1171→        open={paymentDialogOpen}
+  1172→        onOpenChange={(open) => {
+  1173→          if (!open && !showSuccess) {
+  1174→            setPaymentDialogOpen(false);
+  1175→            resetPaymentState();
+  1176→          }
+  1177→        }}
+  1178→      >
+  1179→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+  1180→          {/* Success Overlay */}
+  1181→          <AnimatePresence>
+  1182→            {showSuccess && (
+  1183→              <motion.div
+  1184→                initial={{ opacity: 0 }}
+  1185→                animate={{ opacity: 1 }}
+  1186→                exit={{ opacity: 0 }}
+  1187→                className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-background/95 backdrop-blur-sm"
+  1188→              >
+  1189→                <motion.div
+  1190→                  initial={{ scale: 0, rotate: -180 }}
+  1191→                  animate={{ scale: 1, rotate: 0 }}
+  1192→                  transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+  1193→                >
+  1194→                  <CheckCircle2 className="size-20 text-emerald-500" />
+  1195→                </motion.div>
+  1196→                <motion.p
+  1197→                  initial={{ opacity: 0, y: 10 }}
+  1198→                  animate={{ opacity: 1, y: 0 }}
+  1199→                  transition={{ delay: 0.3 }}
+  1200→                  className="mt-4 text-lg font-semibold"
+  1201→                >
+  1202→                  Pembayaran Berhasil!
+  1203→                </motion.p>
+  1204→                <motion.p
+  1205→                  initial={{ opacity: 0, y: 10 }}
+  1206→                  animate={{ opacity: 1, y: 0 }}
+  1207→                  transition={{ delay: 0.5 }}
+  1208→                  className="text-sm text-muted-foreground"
+  1209→                >
+  1210→                  Menyiapkan struk...
+  1211→                </motion.p>
+  1212→              </motion.div>
+  1213→            )}
+  1214→          </AnimatePresence>
+  1215→
+  1216→          <DialogHeader>
+  1217→            <DialogTitle className="flex items-center gap-2">
+  1218→              <CircleDollarSign className="size-5" />
+  1219→              Pembayaran
+  1220→            </DialogTitle>
+  1221→            <DialogDescription>
+  1222→              Total: {formatRupiah(calculations.grandTotal)}
+  1223→            </DialogDescription>
+  1224→          </DialogHeader>
+  1225→
+  1226→          {/* Payment Method Grid */}
+  1227→          <div className="space-y-4">
+  1228→            <div>
+  1229→              <Label className="text-sm font-medium mb-2 block">
+  1230→                Metode Pembayaran
+  1231→              </Label>
+  1232→              <div className="grid grid-cols-3 gap-2">
+  1233→                {PAYMENT_METHODS.map((method) => (
+  1234→                  <Button
+  1235→                    key={method.value}
+  1236→                    variant={selectedPaymentMethod === method.value ? 'default' : 'outline'}
+  1237→                    className={cn(
+  1238→                      'h-auto flex-col gap-1.5 py-3',
+  1239→                      selectedPaymentMethod === method.value && 'ring-2 ring-primary ring-offset-2'
+  1240→                    )}
+  1241→                    onClick={() => setSelectedPaymentMethod(method.value)}
+  1242→                  >
+  1243→                    {method.icon}
+  1244→                    <span className="text-xs">{method.label}</span>
+  1245→                  </Button>
+  1246→                ))}
+  1247→              </div>
+  1248→            </div>
+  1249→
+  1250→            {/* Multi-payment add button */}
+  1251→            <div className="flex items-center gap-2">
+  1252→              <Button
+  1253→                variant="outline"
+  1254→                size="sm"
+  1255→                className="gap-1 text-xs"
+  1256→                onClick={handleAddPaymentSplit}
+  1257→              >
+  1258→                <Plus className="size-3.5" />
+  1259→                Tambah Pembayaran
+  1260→              </Button>
+  1261→              {paymentSplits.length > 0 && (
+  1262→                <span className="text-xs text-muted-foreground">
+  1263→                  Sisa: {formatRupiah(remainingBalance)}
+  1264→                </span>
+  1265→              )}
+  1266→            </div>
+  1267→
+  1268→            {/* Payment Splits List */}
+  1269→            <AnimatePresence>
+  1270→              {paymentSplits.length > 0 && (
+  1271→                <motion.div
+  1272→                  {...scaleIn}
+  1273→                  className="space-y-2 rounded-lg border p-3"
+  1274→                >
+  1275→                  {paymentSplits.map((split, i) => (
+  1276→                    <div key={i} className="flex items-center gap-2">
+  1277→                      <span className="text-xs text-muted-foreground w-16 shrink-0">
+  1278→                        {PAYMENT_METHODS.find((m) => m.value === split.method)?.label}
+  1279→                      </span>
+  1280→                      <Input
+  1281→                        type="number"
+  1282→                        min={0}
+  1283→                        placeholder="0"
+  1284→                        className="h-8 flex-1 text-right text-sm"
+  1285→                        value={split.amount || ''}
+  1286→                        onChange={(e) =>
+  1287→                          handleUpdateSplitAmount(
+  1288→                            i,
+  1289→                            Math.max(0, parseFloat(e.target.value) || 0)
+  1290→                          )
+  1291→                        }
+  1292→                      />
+  1293→                      <Button
+  1294→                        variant="ghost"
+  1295→                        size="icon"
+  1296→                        className="size-8 text-destructive"
+  1297→                        onClick={() => handleRemoveSplit(i)}
+  1298→                      >
+  1299→                        <X className="size-3.5" />
+  1300→                      </Button>
+  1301→                    </div>
+  1302→                  ))}
+  1303→                  <Separator className="my-1" />
+  1304→                  <div className="flex items-center justify-between text-sm">
+  1305→                    <span className="text-muted-foreground">Total dibayar</span>
+  1306→                    <span className="font-semibold">{formatRupiah(paymentSplitsTotal)}</span>
+  1307→                  </div>
+  1308→                  {remainingBalance > 0 && (
+  1309→                    <div className="flex items-center justify-between text-sm">
+  1310→                      <span className="text-muted-foreground">Sisa</span>
+  1311→                      <span className="font-semibold text-destructive">
+  1312→                        {formatRupiah(remainingBalance)}
+  1313→                      </span>
+  1314→                    </div>
+  1315→                  )}
+  1316→                </motion.div>
+  1317→              )}
+  1318→            </AnimatePresence>
+  1319→
+  1320→            {/* Cash Payment Section */}
+  1321→            {selectedPaymentMethod === 'cash' && paymentSplits.length === 0 && (
+  1322→              <div className="space-y-3 rounded-lg border p-3">
+  1323→                <Label className="text-sm font-medium">Jumlah Uang</Label>
+  1324→                {/* Quick cash buttons */}
+  1325→                <div className="flex flex-wrap gap-2">
+  1326→                  <Button
+  1327→                    variant={cashAmount === String(calculations.grandTotal) ? 'default' : 'outline'}
+  1328→                    size="sm"
+  1329→                    className="text-xs"
+  1330→                    onClick={() => setCashAmount(String(calculations.grandTotal))}
+  1331→                  >
+  1332→                    Uang Pas
+  1333→                  </Button>
+  1334→                  {QUICK_CASH_AMOUNTS.map((amount) => (
+  1335→                    <Button
+  1336→                      key={amount}
+  1337→                      variant={cashAmount === String(amount) ? 'default' : 'outline'}
+  1338→                      size="sm"
+  1339→                      className="text-xs"
+  1340→                      onClick={() => setCashAmount(String(amount))}
+  1341→                    >
+  1342→                      {formatRupiah(amount).replace('Rp', '').trim()}
+  1343→                    </Button>
+  1344→                  ))}
+  1345→                </div>
+  1346→                <Input
+  1347→                  type="number"
+  1348→                  min={0}
+  1349→                  placeholder="Masukkan jumlah..."
+  1350→                  className="text-right text-lg font-semibold"
+  1351→                  value={cashAmount}
+  1352→                  onChange={(e) => setCashAmount(e.target.value)}
+  1353→                  autoFocus
+  1354→                />
+  1355→                {/* Change calculation */}
+  1356→                {cashAmount && parseFloat(cashAmount) >= calculations.grandTotal && (
+  1357→                  <motion.div
+  1358→                    {...scaleIn}
+  1359→                    className="flex items-center justify-between rounded-lg bg-emerald-50 dark:bg-emerald-900/20 p-3"
+  1360→                  >
+  1361→                    <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+  1362→                      Kembalian
+  1363→                    </span>
+  1364→                    <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+  1365→                      {formatRupiah(
+  1366→                        parseFloat(cashAmount) - calculations.grandTotal
+  1367→                      )}
+  1368→                    </span>
+  1369→                  </motion.div>
+  1370→                )}
+  1371→                {cashAmount && parseFloat(cashAmount) > 0 && parseFloat(cashAmount) < calculations.grandTotal && (
+  1372→                  <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-3">
+  1373→                    <span className="text-sm font-medium text-destructive">
+  1374→                      Kurang
+  1375→                    </span>
+  1376→                    <span className="text-sm font-bold text-destructive">
+  1377→                      {formatRupiah(calculations.grandTotal - parseFloat(cashAmount))}
+  1378→                    </span>
+  1379→                  </div>
+  1380→                )}
+  1381→              </div>
+  1382→            )}
+  1383→
+  1384→            {/* Customer Selection (Optional) */}
+  1385→            <div>
+  1386→              <Label className="text-sm font-medium mb-2 block">
+  1387→                Pelanggan (Opsional)
+  1388→              </Label>
+  1389→              <Popover>
+  1390→                <PopoverTrigger asChild>
+  1391→                  <Button
+  1392→                    variant="outline"
+  1393→                    className="w-full justify-between text-left font-normal"
+  1394→                  >
+  1395→                    {selectedCustomerId
+  1396→                      ? customers.find((c) => c.id === selectedCustomerId)?.name || 'Pilih pelanggan...'
+  1397→                      : 'Pilih pelanggan...'}
+  1398→                    <ChevronDown className="ml-2 size-4 shrink-0 opacity-50" />
+  1399→                  </Button>
+  1400→                </PopoverTrigger>
+  1401→                <PopoverContent className="w-72 p-2" align="start">
+  1402→                  <Input
+  1403→                    placeholder="Cari nama/telp..."
+  1404→                    className="mb-2 h-8 text-sm"
+  1405→                    value={customerSearch}
+  1406→                    onChange={(e) => setCustomerSearch(e.target.value)}
+  1407→                  />
+  1408→                  <ScrollArea className="max-h-48">
+  1409→                    <div className="space-y-0.5">
+  1410→                      {filteredCustomers.map((c) => (
+  1411→                        <button
+  1412→                          key={c.id}
+  1413→                          className={cn(
+  1414→                            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left hover:bg-accent transition-colors',
+  1415→                            selectedCustomerId === c.id && 'bg-accent'
+  1416→                          )}
+  1417→                          onClick={() => {
+  1418→                            setSelectedCustomerId(c.id);
+  1419→                          }}
+  1420→                        >
+  1421→                          <User className="size-3.5 text-muted-foreground shrink-0" />
+  1422→                          <div className="flex-1 min-w-0">
+  1423→                            <p className="truncate font-medium">{c.name}</p>
+  1424→                            {c.phone && (
+  1425→                              <p className="text-xs text-muted-foreground">
+  1426→                                {c.phone}
+  1427→                              </p>
+  1428→                            )}
+  1429→                          </div>
+  1430→                        </button>
+  1431→                      ))}
+  1432→                      {filteredCustomers.length === 0 && (
+  1433→                        <p className="py-4 text-center text-xs text-muted-foreground">
+  1434→                          Pelanggan tidak ditemukan
+  1435→                        </p>
+  1436→                      )}
+  1437→                    </div>
+  1438→                  </ScrollArea>
+  1439→                </PopoverContent>
+  1440→              </Popover>
+  1441→            </div>
+  1442→
+  1443→            {/* Notes */}
+  1444→            <div>
+  1445→              <Label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+  1446→                <StickyNote className="size-3.5" />
+  1447→                Catatan (Opsional)
+  1448→              </Label>
+  1449→              <Textarea
+  1450→                placeholder="Catatan transaksi..."
+  1451→                className="min-h-[60px] text-sm"
+  1452→                value={paymentNotes}
+  1453→                onChange={(e) => setPaymentNotes(e.target.value)}
+  1454→              />
+  1455→            </div>
+  1456→          </div>
+  1457→
+  1458→          <DialogFooter className="mt-4 gap-2">
+  1459→            <Button
+  1460→              variant="outline"
+  1461→              onClick={() => {
+  1462→                setPaymentDialogOpen(false);
+  1463→                resetPaymentState();
+  1464→              }}
+  1465→              disabled={showSuccess}
+  1466→            >
+  1467→              Batal
+  1468→            </Button>
+  1469→            <Button
+  1470→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+  1471→              onClick={handleProcessPayment}
+  1472→              disabled={
+  1473→                showSuccess ||
+  1474→                createTransactionMutation.isPending ||
+  1475→                (selectedPaymentMethod === 'cash' &&
+  1476→                  paymentSplits.length === 0 &&
+  1477→                  (!cashAmount || parseFloat(cashAmount) < calculations.grandTotal)) ||
+  1478→                (paymentSplits.length > 0 && paymentSplitsTotal < calculations.grandTotal)
+  1479→              }
+  1480→            >
+  1481→              {createTransactionMutation.isPending && (
+  1482→                <Loader2 className="size-4 animate-spin" />
+  1483→              )}
+  1484→              Proses Pembayaran
+  1485→            </Button>
+  1486→          </DialogFooter>
+  1487→        </DialogContent>
+  1488→      </Dialog>
+  1489→
+  1490→      {/* ═══ RECEIPT DIALOG ═══ */}
+  1491→      <Dialog open={receiptDialogOpen} onOpenChange={setReceiptDialogOpen}>
+  1492→        <DialogContent className="sm:max-w-sm p-0 overflow-hidden" showCloseButton={false}>
+  1493→          {/* Thermal receipt style */}
+  1494→          <div id="receipt-print" className="bg-white text-black p-6 font-mono text-xs">
+  1495→            {/* Store Info */}
+  1496→            <div className="text-center mb-4">
+  1497→              <p className="text-sm font-bold text-base">{storeName || 'Toko Sejahtera'}</p>
+  1498→              {storeAddress && (
+  1499→                <p className="text-[10px] text-gray-600 mt-0.5">{storeAddress}</p>
+  1500→              )}
+  1501→              {storePhone && (
+  1502→                <p className="text-[10px] text-gray-600">Telp: {storePhone}</p>
+  1503→              )}
+  1504→            </div>
+  1505→
+  1506→            <div className="border-t border-dashed border-gray-400 my-2" />
+  1507→
+  1508→            {/* Transaction Info */}
+  1509→            <div className="space-y-0.5 text-[11px]">
+  1510→              <div className="flex justify-between">
+  1511→                <span>No. Invoice</span>
+  1512→                <span className="font-semibold">{lastTransaction?.invoiceNumber || '-'}</span>
+  1513→              </div>
+  1514→              <div className="flex justify-between">
+  1515→                <span>Tanggal</span>
+  1516→                <span>{lastTransaction?.completedAt ? formatDateTime(lastTransaction.completedAt) : '-'}</span>
+  1517→              </div>
+  1518→              <div className="flex justify-between">
+  1519→                <span>Kasir</span>
+  1520→                <span>{user?.name || '-'}</span>
+  1521→              </div>
+  1522→              {lastTransaction?.customer && (
+  1523→                <div className="flex justify-between">
+  1524→                  <span>Pelanggan</span>
+  1525→                  <span>{lastTransaction.customer.name}</span>
+  1526→                </div>
+  1527→              )}
+  1528→            </div>
+  1529→
+  1530→            <div className="border-t border-dashed border-gray-400 my-2" />
+  1531→
+  1532→            {/* Items */}
+  1533→            <div className="space-y-1.5">
+  1534→              {lastTransaction?.items?.map((item) => (
+  1535→                <div key={item.id}>
+  1536→                  <p className="font-medium text-[11px]">{item.productName}</p>
+  1537→                  <div className="flex justify-between text-[10px] text-gray-600">
+  1538→                    <span>
+  1539→                      {item.quantity} × {formatRupiah(item.price)}
+  1540→                    </span>
+  1541→                    <span>{formatRupiah(item.total)}</span>
+  1542→                  </div>
+  1543→                  {item.discount > 0 && (
+  1544→                    <div className="flex justify-between text-[10px] text-gray-500">
+  1545→                      <span>Diskon</span>
+  1546→                      <span>-{formatRupiah(item.discount)}</span>
+  1547→                    </div>
+  1548→                  )}
+  1549→                </div>
+  1550→              ))}
+  1551→            </div>
+  1552→
+  1553→            <div className="border-t border-dashed border-gray-400 my-2" />
+  1554→
+  1555→            {/* Totals */}
+  1556→            <div className="space-y-0.5 text-[11px]">
+  1557→              <div className="flex justify-between">
+  1558→                <span>Subtotal</span>
+  1559→                <span>{formatRupiah(lastTransaction?.subtotal || 0)}</span>
+  1560→              </div>
+  1561→              {(lastTransaction?.discountAmount ?? 0) > 0 && (
+  1562→                <div className="flex justify-between">
+  1563→                  <span>Diskon</span>
+  1564→                  <span>-{formatRupiah(lastTransaction?.discountAmount || 0)}</span>
+  1565→                </div>
+  1566→              )}
+  1567→              {(lastTransaction?.taxAmount ?? 0) > 0 && (
+  1568→                <div className="flex justify-between">
+  1569→                  <span>Pajak</span>
+  1570→                  <span>{formatRupiah(lastTransaction?.taxAmount || 0)}</span>
+  1571→                </div>
+  1572→              )}
+  1573→              {(lastTransaction?.serviceCharge ?? 0) > 0 && (
+  1574→                <div className="flex justify-between">
+  1575→                  <span>Service Charge</span>
+  1576→                  <span>{formatRupiah(lastTransaction?.serviceCharge || 0)}</span>
+  1577→                </div>
+  1578→              )}
+  1579→            </div>
+  1580→
+  1581→            <div className="border-t border-gray-800 my-2" />
+  1582→
+  1583→            <div className="flex justify-between text-sm font-bold">
+  1584→              <span>TOTAL</span>
+  1585→              <span>{formatRupiah(lastTransaction?.grandTotal || 0)}</span>
+  1586→            </div>
+  1587→
+  1588→            <div className="border-t border-dashed border-gray-400 my-2" />
+  1589→
+  1590→            {/* Payment Info */}
+  1591→            <div className="space-y-0.5 text-[11px]">
+  1592→              <div className="flex justify-between">
+  1593→                <span>Metode Bayar</span>
+  1594→                <span className="uppercase">
+  1595→                  {PAYMENT_METHODS.find(
+  1596→                    (m) => m.value === lastTransaction?.paymentMethod
+  1597→                  )?.label || lastTransaction?.paymentMethod || '-'}
+  1598→                </span>
+  1599→              </div>
+  1600→              <div className="flex justify-between">
+  1601→                <span>Dibayar</span>
+  1602→                <span>{formatRupiah(lastPaidAmount || lastTransaction?.paidAmount || 0)}</span>
+  1603→              </div>
+  1604→              {(lastChangeAmount || lastTransaction?.changeAmount || 0) > 0 && (
+  1605→                <div className="flex justify-between font-semibold">
+  1606→                  <span>Kembalian</span>
+  1607→                  <span>{formatRupiah(lastChangeAmount || lastTransaction?.changeAmount || 0)}</span>
+  1608→                </div>
+  1609→              )}
+  1610→            </div>
+  1611→
+  1612→            {lastTransaction?.notes && (
+  1613→              <>
+  1614→                <div className="border-t border-dashed border-gray-400 my-2" />
+  1615→                <p className="text-[10px] text-gray-500">Catatan: {lastTransaction.notes}</p>
+  1616→              </>
+  1617→            )}
+  1618→
+  1619→            <div className="border-t border-dashed border-gray-400 my-2" />
+  1620→
+  1621→            <p className="text-center text-[11px] font-semibold mt-2">
+  1622→              Terima Kasih!
+  1623→            </p>
+  1624→            <p className="text-center text-[9px] text-gray-500 mt-0.5">
+  1625→              Simpan struk ini sebagai bukti pembayaran
+  1626→            </p>
+  1627→          </div>
+  1628→
+  1629→          <div className="flex gap-2 p-4 pt-0">
+  1630→            <Button
+  1631→              variant="outline"
+  1632→              className="flex-1 gap-2"
+  1633→              onClick={handlePrintReceipt}
+  1634→            >
+  1635→              <Printer className="size-4" />
+  1636→              Cetak
+  1637→            </Button>
+  1638→            <Button
+  1639→              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+  1640→              onClick={() => setReceiptDialogOpen(false)}
+  1641→            >
+  1642→              Selesai
+  1643→            </Button>
+  1644→          </div>
+  1645→        </DialogContent>
+  1646→      </Dialog>
+  1647→    </div>
+  1648→  );
+  1649→}
+  1650→

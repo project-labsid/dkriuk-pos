@@ -1,0 +1,777 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback } from 'react';
+     4→import { motion } from 'framer-motion';
+     5→import {
+     6→  useQuery,
+     7→} from '@tanstack/react-query';
+     8→import {
+     9→  useReactTable,
+    10→  getCoreRowModel,
+    11→  getPaginationRowModel,
+    12→  flexRender,
+    13→  type ColumnDef,
+    14→} from '@tanstack/react-table';
+    15→import {
+    16→  Search,
+    17→  ChevronLeft,
+    18→  ChevronRight,
+    19→  Eye,
+    20→  Receipt,
+    21→  Loader2,
+    22→  CalendarDays,
+    23→  Filter,
+    24→  X,
+    25→  Banknote,
+    26→  QrCode,
+    27→  ArrowLeftRight,
+    28→  CreditCard,
+    29→  Smartphone,
+    30→} from 'lucide-react';
+    31→import type { Transaction, TransactionItem, PaginatedResponse } from '@/types';
+    32→
+    33→import { Button } from '@/components/ui/button';
+    34→import { Input } from '@/components/ui/input';
+    35→import { Badge } from '@/components/ui/badge';
+    36→import { Skeleton } from '@/components/ui/skeleton';
+    37→import { Label } from '@/components/ui/label';
+    38→import { Separator } from '@/components/ui/separator';
+    39→import {
+    40→  Table,
+    41→  TableHeader,
+    42→  TableBody,
+    43→  TableHead,
+    44→  TableRow,
+    45→  TableCell,
+    46→} from '@/components/ui/table';
+    47→import {
+    48→  Dialog,
+    49→  DialogContent,
+    50→  DialogHeader,
+    51→  DialogTitle,
+    52→  DialogDescription,
+    53→} from '@/components/ui/dialog';
+    54→import {
+    55→  Select,
+    56→  SelectContent,
+    57→  SelectItem,
+    58→  SelectTrigger,
+    59→  SelectValue,
+    60→} from '@/components/ui/select';
+    61→import { ScrollArea } from '@/components/ui/scroll-area';
+    62→
+    63→// ─── Helpers ──────────────────────────────────────────────────────────────────
+    64→
+    65→function formatRupiah(amount: number): string {
+    66→  return new Intl.NumberFormat('id-ID', {
+    67→    style: 'currency',
+    68→    currency: 'IDR',
+    69→    minimumFractionDigits: 0,
+    70→    maximumFractionDigits: 0,
+    71→  }).format(amount);
+    72→}
+    73→
+    74→function formatDate(dateStr: string): string {
+    75→  return new Date(dateStr).toLocaleDateString('id-ID', {
+    76→    day: '2-digit',
+    77→    month: 'short',
+    78→    year: 'numeric',
+    79→    hour: '2-digit',
+    80→    minute: '2-digit',
+    81→  });
+    82→}
+    83→
+    84→function formatDateShort(dateStr: string): string {
+    85→  return new Date(dateStr).toLocaleDateString('id-ID', {
+    86→    day: '2-digit',
+    87→    month: 'short',
+    88→    year: 'numeric',
+    89→  });
+    90→}
+    91→
+    92→// ─── Animation Variants ──────────────────────────────────────────────────────
+    93→
+    94→const containerVariants = {
+    95→  hidden: { opacity: 0 },
+    96→  visible: {
+    97→    opacity: 1,
+    98→    transition: { staggerChildren: 0.08 },
+    99→  },
+   100→};
+   101→
+   102→const itemVariants = {
+   103→  hidden: { opacity: 0, y: 20 },
+   104→  visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
+   105→};
+   106→
+   107→// ─── Status / Payment Badges ─────────────────────────────────────────────────
+   108→
+   109→function getStatusBadge(status: string) {
+   110→  switch (status) {
+   111→    case 'completed':
+   112→      return (
+   113→        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100">
+   114→          Selesai
+   115→        </Badge>
+   116→      );
+   117→    case 'cancelled':
+   118→      return (
+   119→        <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100">
+   120→          Dibatalkan
+   121→        </Badge>
+   122→      );
+   123→    case 'held':
+   124→      return (
+   125→        <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100">
+   126→          Ditahan
+   127→        </Badge>
+   128→      );
+   129→    default:
+   130→      return <Badge variant="secondary">{status}</Badge>;
+   131→  }
+   132→}
+   133→
+   134→function getPaymentBadge(method: string) {
+   135→  const config: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
+   136→    tunai: {
+   137→      label: 'Tunai',
+   138→      icon: <Banknote className="size-3" />,
+   139→      className: 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100',
+   140→    },
+   141→    qris: {
+   142→      label: 'QRIS',
+   143→      icon: <QrCode className="size-3" />,
+   144→      className: 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100',
+   145→    },
+   146→    transfer: {
+   147→      label: 'Transfer',
+   148→      icon: <ArrowLeftRight className="size-3" />,
+   149→      className: 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100',
+   150→    },
+   151→    debit: {
+   152→      label: 'Debit',
+   153→      icon: <CreditCard className="size-3" />,
+   154→      className: 'bg-cyan-100 text-cyan-700 border-cyan-200 hover:bg-cyan-100',
+   155→    },
+   156→    kredit: {
+   157→      label: 'Kredit',
+   158→      icon: <CreditCard className="size-3" />,
+   159→      className: 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100',
+   160→    },
+   161→    'e-wallet': {
+   162→      label: 'E-Wallet',
+   163→      icon: <Smartphone className="size-3" />,
+   164→      className: 'bg-pink-100 text-pink-700 border-pink-200 hover:bg-pink-100',
+   165→    },
+   166→  };
+   167→  const c = config[method];
+   168→  if (!c) return <Badge variant="secondary">{method}</Badge>;
+   169→  return (
+   170→    <Badge className={c.className}>
+   171→      <span className="mr-1">{c.icon}</span>
+   172→      {c.label}
+   173→    </Badge>
+   174→  );
+   175→}
+   176→
+   177→// ─── Main Component ────────────────────────────────────────────────────────────
+   178→
+   179→export default function TransactionsPage() {
+   180→  // ── Filter State ────────────────────────────────────────────────────────────
+   181→  const [search, setSearch] = useState('');
+   182→  const [status, setStatus] = useState<string>('all');
+   183→  const [paymentMethod, setPaymentMethod] = useState<string>('all');
+   184→  const [startDate, setStartDate] = useState('');
+   185→  const [endDate, setEndDate] = useState('');
+   186→  const [page, setPage] = useState(1);
+   187→  const [perPage, setPerPage] = useState(10);
+   188→
+   189→  // ── Detail Dialog State ─────────────────────────────────────────────────────
+   190→  const [detailOpen, setDetailOpen] = useState(false);
+   191→  const [detailId, setDetailId] = useState<string | null>(null);
+   192→
+   193→  // ── Filters Open ────────────────────────────────────────────────────────────
+   194→  const [filtersOpen, setFiltersOpen] = useState(false);
+   195→
+   196→  // ── Transactions Query ──────────────────────────────────────────────────────
+   197→  const transactionsQuery = useQuery<PaginatedResponse<Transaction>>({
+   198→    queryKey: ['transactions', page, perPage, search, status, paymentMethod, startDate, endDate],
+   199→    queryFn: async () => {
+   200→      const params = new URLSearchParams({
+   201→        page: String(page),
+   202→        perPage: String(perPage),
+   203→      });
+   204→      if (search) params.set('search', search);
+   205→      if (status && status !== 'all') params.set('status', status);
+   206→      if (paymentMethod && paymentMethod !== 'all') params.set('paymentMethod', paymentMethod);
+   207→      if (startDate) params.set('startDate', startDate);
+   208→      if (endDate) params.set('endDate', endDate);
+   209→      const res = await fetch(`/api/transactions?${params.toString()}`);
+   210→      if (!res.ok) throw new Error('Gagal memuat transaksi');
+   211→      return res.json();
+   212→    },
+   213→  });
+   214→
+   215→  // ── Detail Query ────────────────────────────────────────────────────────────
+   216→  const detailQuery = useQuery<Transaction>({
+   217→    queryKey: ['transaction-detail', detailId],
+   218→    queryFn: async () => {
+   219→      if (!detailId) throw new Error('No ID');
+   220→      const res = await fetch(`/api/transactions/${detailId}`);
+   221→      if (!res.ok) throw new Error('Gagal memuat detail transaksi');
+   222→      const json = await res.json();
+   223→      return json.data as Transaction;
+   224→    },
+   225→    enabled: !!detailId,
+   226→  });
+   227→
+   228→  // ── Derived Data ────────────────────────────────────────────────────────────
+   229→  const transactions = transactionsQuery.data?.data ?? [];
+   230→  const totalTransactions = transactionsQuery.data?.total ?? 0;
+   231→  const totalPages = transactionsQuery.data?.totalPages ?? 1;
+   232→  const isLoading = transactionsQuery.isLoading || transactionsQuery.isFetching;
+   233→  const detailData = detailQuery.data;
+   234→
+   235→  const startItem = (page - 1) * perPage + 1;
+   236→  const endItem = Math.min(page * perPage, totalTransactions);
+   237→
+   238→  const hasActiveFilters = !!(status !== 'all' || paymentMethod !== 'all' || startDate || endDate);
+   239→
+   240→  const clearFilters = useCallback(() => {
+   241→    setStatus('all');
+   242→    setPaymentMethod('all');
+   243→    setStartDate('');
+   244→    setEndDate('');
+   245→    setPage(1);
+   246→  }, []);
+   247→
+   248→  // ── Handlers ────────────────────────────────────────────────────────────────
+   249→
+   250→  const openDetail = useCallback((id: string) => {
+   251→    setDetailId(id);
+   252→    setDetailOpen(true);
+   253→  }, []);
+   254→
+   255→  const closeDetail = useCallback(() => {
+   256→    setDetailOpen(false);
+   257→    setTimeout(() => setDetailId(null), 200);
+   258→  }, []);
+   259→
+   260→  const handleSearchChange = useCallback((value: string) => {
+   261→    setSearch(value);
+   262→    setPage(1);
+   263→  }, []);
+   264→
+   265→  const handlePerPageChange = useCallback((value: string) => {
+   266→    setPerPage(Number(value));
+   267→    setPage(1);
+   268→  }, []);
+   269→
+   270→  const handleStatusChange = useCallback((value: string) => {
+   271→    setStatus(value);
+   272→    setPage(1);
+   273→  }, []);
+   274→
+   275→  const handlePaymentMethodChange = useCallback((value: string) => {
+   276→    setPaymentMethod(value);
+   277→    setPage(1);
+   278→  }, []);
+   279→
+   280→  const handleStartDateChange = useCallback((value: string) => {
+   281→    setStartDate(value);
+   282→    setPage(1);
+   283→  }, []);
+   284→
+   285→  const handleEndDateChange = useCallback((value: string) => {
+   286→    setEndDate(value);
+   287→    setPage(1);
+   288→  }, []);
+   289→
+   290→  // ── Table Columns ─────────────────────────────────────────────────────────
+   291→
+   292→  const columns = useMemo<ColumnDef<Transaction>[]>(
+   293→    () => [
+   294→      {
+   295→        accessorKey: 'index',
+   296→        header: 'No',
+   297→        size: 50,
+   298→        cell: ({ row }) => (
+   299→          <span className="text-muted-foreground text-sm">{row.index + 1}</span>
+   300→        ),
+   301→      },
+   302→      {
+   303→        accessorKey: 'invoiceNumber',
+   304→        header: 'Invoice',
+   305→        size: 160,
+   306→        cell: ({ row }) => (
+   307→          <span className="font-mono text-sm font-medium">{row.original.invoiceNumber}</span>
+   308→        ),
+   309→      },
+   310→      {
+   311→        accessorKey: 'createdAt',
+   312→        header: 'Tanggal',
+   313→        size: 160,
+   314→        cell: ({ row }) => (
+   315→          <span className="text-muted-foreground text-sm">{formatDate(row.original.createdAt)}</span>
+   316→        ),
+   317→      },
+   318→      {
+   319→        accessorKey: 'customer',
+   320→        header: 'Pelanggan',
+   321→        size: 140,
+   322→        cell: ({ row }) => (
+   323→          <span className="text-sm">{row.original.customer?.name || '-'}</span>
+   324→        ),
+   325→      },
+   326→      {
+   327→        accessorKey: 'user',
+   328→        header: 'Kasir',
+   329→        size: 130,
+   330→        cell: ({ row }) => (
+   331→          <span className="text-muted-foreground text-sm">{row.original.user?.name || '-'}</span>
+   332→        ),
+   333→      },
+   334→      {
+   335→        accessorKey: 'paymentMethod',
+   336→        header: 'Metode Bayar',
+   337→        size: 120,
+   338→        cell: ({ row }) => getPaymentBadge(row.original.paymentMethod),
+   339→      },
+   340→      {
+   341→        accessorKey: 'grandTotal',
+   342→        header: 'Total',
+   343→        size: 140,
+   344→        cell: ({ row }) => (
+   345→          <span className="font-medium text-sm">{formatRupiah(row.original.grandTotal)}</span>
+   346→        ),
+   347→      },
+   348→      {
+   349→        accessorKey: 'status',
+   350→        header: 'Status',
+   351→        size: 110,
+   352→        cell: ({ row }) => getStatusBadge(row.original.status),
+   353→      },
+   354→      {
+   355→        id: 'actions',
+   356→        header: 'Aksi',
+   357→        size: 80,
+   358→        cell: ({ row }) => (
+   359→          <Button
+   360→            variant="ghost"
+   361→            size="sm"
+   362→            className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+   363→            onClick={(e) => {
+   364→              e.stopPropagation();
+   365→              openDetail(row.original.id);
+   366→            }}
+   367→          >
+   368→            <Eye className="size-4 mr-1" />
+   369→            Detail
+   370→          </Button>
+   371→        ),
+   372→      },
+   373→    ],
+   374→    [openDetail],
+   375→  );
+   376→
+   377→  // ── Table ─────────────────────────────────────────────────────────────────
+   378→
+   379→  const table = useReactTable({
+   380→    data: transactions,
+   381→    columns,
+   382→    getCoreRowModel: getCoreRowModel(),
+   383→    getPaginationRowModel: getPaginationRowModel(),
+   384→    manualPagination: true,
+   385→    pageCount: totalPages,
+   386→    state: {
+   387→      pagination: { pageIndex: page - 1, pageSize: perPage },
+   388→    },
+   389→  });
+   390→
+   391→  // ── Detail Dialog Content ──────────────────────────────────────────────────
+   392→
+   393→  const detailContent = (
+   394→    <div className="space-y-6">
+   395→      {detailQuery.isLoading ? (
+   396→        <div className="flex items-center justify-center py-12">
+   397→          <Loader2 className="size-8 animate-spin text-muted-foreground" />
+   398→        </div>
+   399→      ) : detailData ? (
+   400→        <>
+   401→          {/* Transaction Info */}
+   402→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   403→            <div className="space-y-1">
+   404→              <Label className="text-muted-foreground text-xs">No. Invoice</Label>
+   405→              <p className="font-mono font-medium text-sm">{detailData.invoiceNumber}</p>
+   406→            </div>
+   407→            <div className="space-y-1">
+   408→              <Label className="text-muted-foreground text-xs">Tanggal</Label>
+   409→              <p className="text-sm">{formatDate(detailData.createdAt)}</p>
+   410→            </div>
+   411→            <div className="space-y-1">
+   412→              <Label className="text-muted-foreground text-xs">Pelanggan</Label>
+   413→              <p className="text-sm">{detailData.customer?.name || 'Umum'}</p>
+   414→            </div>
+   415→            <div className="space-y-1">
+   416→              <Label className="text-muted-foreground text-xs">Kasir</Label>
+   417→              <p className="text-sm">{detailData.user?.name || '-'}</p>
+   418→            </div>
+   419→            <div className="space-y-1">
+   420→              <Label className="text-muted-foreground text-xs">Metode Pembayaran</Label>
+   421→              <div className="mt-0.5">{getPaymentBadge(detailData.paymentMethod)}</div>
+   422→            </div>
+   423→            <div className="space-y-1">
+   424→              <Label className="text-muted-foreground text-xs">Status</Label>
+   425→              <div className="mt-0.5">{getStatusBadge(detailData.status)}</div>
+   426→            </div>
+   427→            {detailData.notes && (
+   428→              <div className="space-y-1 sm:col-span-2">
+   429→                <Label className="text-muted-foreground text-xs">Catatan</Label>
+   430→                <p className="text-sm">{detailData.notes}</p>
+   431→              </div>
+   432→            )}
+   433→          </div>
+   434→
+   435→          <Separator />
+   436→
+   437→          {/* Items Table */}
+   438→          <div>
+   439→            <h4 className="font-semibold text-sm mb-3">Item Transaksi</h4>
+   440→            <ScrollArea className="max-h-64">
+   441→              <Table>
+   442→                <TableHeader>
+   443→                  <TableRow>
+   444→                    <TableHead className="w-10">No</TableHead>
+   445→                    <TableHead>Produk</TableHead>
+   446→                    <TableHead className="text-right">Qty</TableHead>
+   447→                    <TableHead className="text-right">Harga</TableHead>
+   448→                    <TableHead className="text-right">Diskon</TableHead>
+   449→                    <TableHead className="text-right">Total</TableHead>
+   450→                  </TableRow>
+   451→                </TableHeader>
+   452→                <TableBody>
+   453→                  {(detailData.items ?? []).length === 0 ? (
+   454→                    <TableRow>
+   455→                      <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+   456→                        Tidak ada item
+   457→                      </TableCell>
+   458→                    </TableRow>
+   459→                  ) : (
+   460→                    (detailData.items ?? []).map((item: TransactionItem, idx: number) => (
+   461→                      <TableRow key={item.id}>
+   462→                        <TableCell className="text-muted-foreground text-sm">{idx + 1}</TableCell>
+   463→                        <TableCell className="text-sm font-medium">{item.productName}</TableCell>
+   464→                        <TableCell className="text-right text-sm">{item.quantity}</TableCell>
+   465→                        <TableCell className="text-right text-sm">{formatRupiah(item.price)}</TableCell>
+   466→                        <TableCell className="text-right text-sm">
+   467→                          {item.discount > 0 ? formatRupiah(item.discount) : '-'}
+   468→                        </TableCell>
+   469→                        <TableCell className="text-right text-sm font-medium">{formatRupiah(item.total)}</TableCell>
+   470→                      </TableRow>
+   471→                    ))
+   472→                  )}
+   473→                </TableBody>
+   474→              </Table>
+   475→            </ScrollArea>
+   476→          </div>
+   477→
+   478→          <Separator />
+   479→
+   480→          {/* Payment Details */}
+   481→          <div className="space-y-2">
+   482→            <h4 className="font-semibold text-sm mb-3">Detail Pembayaran</h4>
+   483→            <div className="space-y-2 text-sm">
+   484→              <div className="flex justify-between">
+   485→                <span className="text-muted-foreground">Subtotal</span>
+   486→                <span>{formatRupiah(detailData.subtotal)}</span>
+   487→              </div>
+   488→              {detailData.discountAmount > 0 && (
+   489→                <div className="flex justify-between text-red-600">
+   490→                  <span>Diskon</span>
+   491→                  <span>-{formatRupiah(detailData.discountAmount)}</span>
+   492→                </div>
+   493→              )}
+   494→              {detailData.taxAmount > 0 && (
+   495→                <div className="flex justify-between">
+   496→                  <span className="text-muted-foreground">Pajak</span>
+   497→                  <span>{formatRupiah(detailData.taxAmount)}</span>
+   498→                </div>
+   499→              )}
+   500→              {detailData.serviceCharge > 0 && (
+   501→                <div className="flex justify-between">
+   502→                  <span className="text-muted-foreground">Biaya Layanan</span>
+   503→                  <span>{formatRupiah(detailData.serviceCharge)}</span>
+   504→                </div>
+   505→              )}
+   506→              <Separator />
+   507→              <div className="flex justify-between font-semibold text-base">
+   508→                <span>Grand Total</span>
+   509→                <span>{formatRupiah(detailData.grandTotal)}</span>
+   510→              </div>
+   511→              <Separator />
+   512→              <div className="flex justify-between">
+   513→                <span className="text-muted-foreground">Dibayar</span>
+   514→                <span>{formatRupiah(detailData.paidAmount)}</span>
+   515→              </div>
+   516→              <div className="flex justify-between">
+   517→                <span className="text-muted-foreground">Kembalian</span>
+   518→                <span>{formatRupiah(detailData.changeAmount)}</span>
+   519→              </div>
+   520→            </div>
+   521→          </div>
+   522→        </>
+   523→      ) : null}
+   524→    </div>
+   525→  );
+   526→
+   527→  // ── Render ─────────────────────────────────────────────────────────────────
+   528→
+   529→  return (
+   530→    <motion.div
+   531→      variants={containerVariants}
+   532→      initial="hidden"
+   533→      animate="visible"
+   534→      className="flex flex-col gap-6 p-4 md:p-6"
+   535→    >
+   536→      {/* ── Header ─────────────────────────────────────────────────────────── */}
+   537→      <motion.div
+   538→        variants={itemVariants}
+   539→        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+   540→      >
+   541→        <div>
+   542→          <h1 className="text-2xl font-bold tracking-tight">Riwayat Transaksi</h1>
+   543→          <p className="text-muted-foreground text-sm mt-1">
+   544→            Lihat semua riwayat transaksi toko Anda
+   545→          </p>
+   546→        </div>
+   547→        <Button
+   548→          variant={hasActiveFilters ? 'default' : 'outline'}
+   549→          onClick={() => setFiltersOpen((v) => !v)}
+   550→          className={hasActiveFilters ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+   551→        >
+   552→          <Filter className="size-4" />
+   553→          Filter
+   554→          {hasActiveFilters && (
+   555→            <span className="ml-1 bg-white/20 text-xs px-1.5 py-0.5 rounded-full">
+   556→              {[status !== 'all', paymentMethod !== 'all', !!startDate, !!endDate].filter(Boolean).length}
+   557→            </span>
+   558→          )}
+   559→        </Button>
+   560→      </motion.div>
+   561→
+   562→      {/* ── Filters Panel ──────────────────────────────────────────────────── */}
+   563→      {filtersOpen && (
+   564→        <motion.div
+   565→          initial={{ opacity: 0, height: 0 }}
+   566→          animate={{ opacity: 1, height: 'auto' }}
+   567→          exit={{ opacity: 0, height: 0 }}
+   568→          className="border rounded-xl bg-card shadow-sm p-4"
+   569→        >
+   570→          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 flex-wrap">
+   571→            <div className="flex-1 min-w-[200px]">
+   572→              <Label className="text-xs text-muted-foreground mb-1.5 block">Status</Label>
+   573→              <Select value={status} onValueChange={handleStatusChange}>
+   574→                <SelectTrigger className="w-full">
+   575→                  <SelectValue placeholder="Semua Status" />
+   576→                </SelectTrigger>
+   577→                <SelectContent>
+   578→                  <SelectItem value="all">Semua Status</SelectItem>
+   579→                  <SelectItem value="completed">Selesai</SelectItem>
+   580→                  <SelectItem value="cancelled">Dibatalkan</SelectItem>
+   581→                  <SelectItem value="held">Ditahan</SelectItem>
+   582→                </SelectContent>
+   583→              </Select>
+   584→            </div>
+   585→            <div className="flex-1 min-w-[200px]">
+   586→              <Label className="text-xs text-muted-foreground mb-1.5 block">Metode Bayar</Label>
+   587→              <Select value={paymentMethod} onValueChange={handlePaymentMethodChange}>
+   588→                <SelectTrigger className="w-full">
+   589→                  <SelectValue placeholder="Semua Metode" />
+   590→                </SelectTrigger>
+   591→                <SelectContent>
+   592→                  <SelectItem value="all">Semua Metode</SelectItem>
+   593→                  <SelectItem value="tunai">Tunai</SelectItem>
+   594→                  <SelectItem value="qris">QRIS</SelectItem>
+   595→                  <SelectItem value="transfer">Transfer</SelectItem>
+   596→                  <SelectItem value="debit">Debit</SelectItem>
+   597→                  <SelectItem value="kredit">Kredit</SelectItem>
+   598→                  <SelectItem value="e-wallet">E-Wallet</SelectItem>
+   599→                </SelectContent>
+   600→              </Select>
+   601→            </div>
+   602→            <div className="flex-1 min-w-[160px]">
+   603→              <Label className="text-xs text-muted-foreground mb-1.5 block">Tanggal Mulai</Label>
+   604→              <div className="relative">
+   605→                <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+   606→                <Input
+   607→                  type="date"
+   608→                  value={startDate}
+   609→                  onChange={(e) => handleStartDateChange(e.target.value)}
+   610→                  className="pl-9"
+   611→                />
+   612→              </div>
+   613→            </div>
+   614→            <div className="flex-1 min-w-[160px]">
+   615→              <Label className="text-xs text-muted-foreground mb-1.5 block">Tanggal Akhir</Label>
+   616→              <div className="relative">
+   617→                <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+   618→                <Input
+   619→                  type="date"
+   620→                  value={endDate}
+   621→                  onChange={(e) => handleEndDateChange(e.target.value)}
+   622→                  className="pl-9"
+   623→                />
+   624→              </div>
+   625→            </div>
+   626→            {hasActiveFilters && (
+   627→              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-destructive">
+   628→                <X className="size-4 mr-1" />
+   629→                Reset
+   630→              </Button>
+   631→            )}
+   632→          </div>
+   633→        </motion.div>
+   634→      )}
+   635→
+   636→      {/* ── Search & Table ──────────────────────────────────────────────────── */}
+   637→      <motion.div
+   638→        variants={itemVariants}
+   639→        className="border rounded-xl bg-card shadow-sm"
+   640→      >
+   641→        <div className="p-4 border-b">
+   642→          <div className="relative max-w-sm">
+   643→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   644→            <Input
+   645→              placeholder="Cari nomor invoice..."
+   646→              value={search}
+   647→              onChange={(e) => handleSearchChange(e.target.value)}
+   648→              className="pl-9"
+   649→            />
+   650→          </div>
+   651→        </div>
+   652→
+   653→        <div className="overflow-x-auto">
+   654→          <Table>
+   655→            <TableHeader>
+   656→              {table.getHeaderGroups().map((headerGroup) => (
+   657→                <TableRow key={headerGroup.id}>
+   658→                  {headerGroup.headers.map((header) => (
+   659→                    <TableHead key={header.id} style={{ width: header.getSize() }}>
+   660→                      {flexRender(header.column.columnDef.header, header.getContext())}
+   661→                    </TableHead>
+   662→                  ))}
+   663→                </TableRow>
+   664→              ))}
+   665→            </TableHeader>
+   666→            <TableBody>
+   667→              {isLoading ? (
+   668→                Array.from({ length: perPage }).map((_, i) => (
+   669→                  <TableRow key={i}>
+   670→                    <TableCell><Skeleton className="h-4 w-6" /></TableCell>
+   671→                    <TableCell><Skeleton className="h-4 w-[130px]" /></TableCell>
+   672→                    <TableCell><Skeleton className="h-4 w-[140px]" /></TableCell>
+   673→                    <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
+   674→                    <TableCell><Skeleton className="h-4 w-[90px]" /></TableCell>
+   675→                    <TableCell><Skeleton className="h-5 w-[90px] rounded-full" /></TableCell>
+   676→                    <TableCell><Skeleton className="h-4 w-[110px]" /></TableCell>
+   677→                    <TableCell><Skeleton className="h-5 w-[80px] rounded-full" /></TableCell>
+   678→                    <TableCell><Skeleton className="h-8 w-16 rounded-md" /></TableCell>
+   679→                  </TableRow>
+   680→                ))
+   681→              ) : transactions.length === 0 ? (
+   682→                <TableRow>
+   683→                  <TableCell colSpan={columns.length} className="h-40 text-center">
+   684→                    <div className="flex flex-col items-center justify-center gap-2">
+   685→                      <Receipt className="size-10 text-muted-foreground/50" />
+   686→                      <p className="text-muted-foreground text-sm">
+   687→                        {search || hasActiveFilters
+   688→                          ? 'Tidak ada transaksi yang sesuai dengan filter'
+   689→                          : 'Belum ada riwayat transaksi.'}
+   690→                      </p>
+   691→                    </div>
+   692→                  </TableCell>
+   693→                </TableRow>
+   694→              ) : (
+   695→                table.getRowModel().rows.map((row) => (
+   696→                  <TableRow
+   697→                    key={row.id}
+   698→                    className="cursor-pointer hover:bg-muted/50"
+   699→                    onClick={() => openDetail(row.original.id)}
+   700→                  >
+   701→                    {row.getVisibleCells().map((cell) => (
+   702→                      <TableCell key={cell.id}>
+   703→                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+   704→                      </TableCell>
+   705→                    ))}
+   706→                  </TableRow>
+   707→                ))
+   708→              )}
+   709→            </TableBody>
+   710→          </Table>
+   711→        </div>
+   712→
+   713→        {/* ── Pagination ─────────────────────────────────────────────────── */}
+   714→        {totalTransactions > 0 && (
+   715→          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t">
+   716→            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+   717→              <span>
+   718→                Menampilkan {startItem}-{endItem} dari {totalTransactions}
+   719→              </span>
+   720→              <Select value={String(perPage)} onValueChange={handlePerPageChange}>
+   721→                <SelectTrigger className="w-[70px] h-8">
+   722→                  <SelectValue />
+   723→                </SelectTrigger>
+   724→                <SelectContent>
+   725→                  <SelectItem value="10">10</SelectItem>
+   726→                  <SelectItem value="25">25</SelectItem>
+   727→                  <SelectItem value="50">50</SelectItem>
+   728→                </SelectContent>
+   729→              </Select>
+   730→              <span>per halaman</span>
+   731→            </div>
+   732→            <div className="flex items-center gap-2">
+   733→              <Button
+   734→                variant="outline"
+   735→                size="sm"
+   736→                onClick={() => setPage((p) => Math.max(1, p - 1))}
+   737→                disabled={page <= 1}
+   738→              >
+   739→                <ChevronLeft className="size-4" />
+   740→                <span className="sm:hidden">Sebelumnya</span>
+   741→              </Button>
+   742→              <div className="flex items-center gap-1 text-sm">
+   743→                <span className="px-2 py-1 rounded-md bg-primary text-primary-foreground font-medium">
+   744→                  {page}
+   745→                </span>
+   746→                <span className="text-muted-foreground">dari {totalPages}</span>
+   747→              </div>
+   748→              <Button
+   749→                variant="outline"
+   750→                size="sm"
+   751→                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+   752→                disabled={page >= totalPages}
+   753→              >
+   754→                <span className="sm:hidden">Berikutnya</span>
+   755→                <ChevronRight className="size-4" />
+   756→              </Button>
+   757→            </div>
+   758→          </div>
+   759→        )}
+   760→      </motion.div>
+   761→
+   762→      {/* ── Detail Dialog ──────────────────────────────────────────────────── */}
+   763→      <Dialog open={detailOpen} onOpenChange={closeDetail}>
+   764→        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+   765→          <DialogHeader>
+   766→            <DialogTitle>Detail Transaksi</DialogTitle>
+   767→            <DialogDescription>
+   768→              Rincian lengkap transaksi {detailData?.invoiceNumber}
+   769→            </DialogDescription>
+   770→          </DialogHeader>
+   771→          {detailContent}
+   772→        </DialogContent>
+   773→      </Dialog>
+   774→    </motion.div>
+   775→  );
+   776→}
+   777→

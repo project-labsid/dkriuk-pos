@@ -1,0 +1,897 @@
+   349→      toast.error(error.message);
+   350→    },
+   351→  });
+   352→
+   353→  const deleteMutation = useMutation({
+   354→    mutationFn: async (id: string) => {
+   355→      const res = await fetch(`/api/products/${id}`, {
+   356→        method: 'DELETE',
+   357→      });
+   358→      if (!res.ok) {
+   359→        const err = await res.json();
+   360→        throw new Error(err.error || 'Gagal menghapus produk');
+   361→      }
+   362→      return res.json();
+   363→    },
+   364→    onSuccess: () => {
+   365→      toast.success('Produk berhasil dinonaktifkan');
+   366→      queryClient.invalidateQueries({ queryKey: ['products'] });
+   367→      setDeleteOpen(false);
+   368→      setDeletingProduct(null);
+   369→    },
+   370→    onError: (error) => {
+   371→      toast.error(error.message);
+   372→    },
+   373→  });
+   374→
+   375→  // ── Derived Data ────────────────────────────────────────────────────────────
+   376→
+   377→  const categories = categoriesQuery.data?.data ?? [];
+   378→  const products = productsQuery.data?.data ?? [];
+   379→  const totalProducts = productsQuery.data?.total ?? 0;
+   380→  const totalPages = productsQuery.data?.totalPages ?? 1;
+   381→  const isLoading = productsQuery.isLoading || productsQuery.isFetching;
+   382→
+   383→  const startItem = (page - 1) * perPage + 1;
+   384→  const endItem = Math.min(page * perPage, totalProducts);
+   385→
+   386→  // ── Handlers ────────────────────────────────────────────────────────────────
+   387→
+   388→  const openAddDialog = useCallback(() => {
+   389→    setEditingProduct(null);
+   390→    form.reset({
+   391→      name: '',
+   392→      barcode: '',
+   393→      sku: '',
+   394→      categoryId: '',
+   395→      unit: 'pcs',
+   396→      costPrice: 0,
+   397→      sellPrice: 0,
+   398→      stock: 0,
+   399→      minStock: 5,
+   400→      image: '',
+   401→      isActive: true,
+   402→    });
+   403→    setFormOpen(true);
+   404→  }, [form]);
+   405→
+   406→  const openEditDialog = useCallback(
+   407→    (product: Product) => {
+   408→      setEditingProduct(product);
+   409→      form.reset({
+   410→        name: product.name,
+   411→        barcode: product.barcode ?? '',
+   412→        sku: product.sku ?? '',
+   413→        categoryId: product.categoryId ?? '',
+   414→        unit: product.unit,
+   415→        costPrice: product.costPrice,
+   416→        sellPrice: product.sellPrice,
+   417→        stock: product.stock,
+   418→        minStock: product.minStock,
+   419→        image: product.image ?? '',
+   420→        isActive: product.isActive,
+   421→      });
+   422→      setFormOpen(true);
+   423→    },
+   424→    [form]
+   425→  );
+   426→
+   427→  const openDeleteDialog = useCallback((product: Product) => {
+   428→    setDeletingProduct(product);
+   429→    setDeleteOpen(true);
+   430→  }, []);
+   431→
+   432→  const closeFormDialog = useCallback(() => {
+   433→    setFormOpen(false);
+   434→    setEditingProduct(null);
+   435→  }, []);
+   436→
+   437→  const onSubmitForm = useCallback(
+   438→    (data: ProductFormData) => {
+   439→      if (editingProduct) {
+   440→        updateMutation.mutate(data);
+   441→      } else {
+   442→        createMutation.mutate(data);
+   443→      }
+   444→    },
+   445→    [editingProduct, createMutation, updateMutation]
+   446→  );
+   447→
+   448→  const handleDeleteConfirm = useCallback(() => {
+   449→    if (deletingProduct) {
+   450→      deleteMutation.mutate(deletingProduct.id);
+   451→    }
+   452→  }, [deletingProduct, deleteMutation]);
+   453→
+   454→  const handleSearchChange = useCallback(
+   455→    (value: string) => {
+   456→      setSearch(value);
+   457→      setPage(1);
+   458→    },
+   459→    []
+   460→  );
+   461→
+   462→  const handleCategoryChange = useCallback(
+   463→    (value: string) => {
+   464→      setCategoryId(value === 'all' ? '' : value);
+   465→      setPage(1);
+   466→    },
+   467→    []
+   468→  );
+   469→
+   470→  const handleStatusChange = useCallback(
+   471→    (value: string) => {
+   472→      setStatusFilter(value === 'all' ? '' : value);
+   473→      setPage(1);
+   474→    },
+   475→    []
+   476→  );
+   477→
+   478→  const handlePerPageChange = useCallback((value: string) => {
+   479→    setPerPage(Number(value));
+   480→    setPage(1);
+   481→  }, []);
+   482→
+   483→  // ── Table Columns ─────────────────────────────────────────────────────────
+   484→
+   485→  const columns = useMemo<ColumnDef<Product>[]>(
+   486→    () => [
+   487→      {
+   488→        accessorKey: 'index',
+   489→        header: 'No',
+   490→        size: 50,
+   491→        cell: ({ row }) => {
+   492→          const idx = row.index;
+   493→          return <span className="text-muted-foreground text-sm">{idx + 1}</span>;
+   494→        },
+   495→      },
+   496→      {
+   497→        accessorKey: 'image',
+   498→        header: 'Foto',
+   499→        size: 60,
+   500→        cell: ({ row }) => (
+   501→          <ProductThumbnail name={row.original.name} image={row.original.image} />
+   502→        ),
+   503→      },
+   504→      {
+   505→        accessorKey: 'name',
+   506→        header: ({ column }) => (
+   507→          <Button
+   508→            variant="ghost"
+   509→            size="sm"
+   510→            className="-ml-3 h-8"
+   511→            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+   512→          >
+   513→            Nama
+   514→            {column.getIsSorted() === 'asc' ? (
+   515→              <ChevronUp className="ml-1 size-4" />
+   516→            ) : column.getIsSorted() === 'desc' ? (
+   517→              <ChevronDown className="ml-1 size-4" />
+   518→            ) : (
+   519→              <ChevronsUpDown className="ml-1 size-4 opacity-50" />
+   520→            )}
+   521→          </Button>
+   522→        ),
+   523→        cell: ({ row }) => (
+   524→          <div className="max-w-[200px] truncate font-medium">
+   525→            {row.original.name}
+   526→          </div>
+   527→        ),
+   528→      },
+   529→      {
+   530→        accessorKey: 'barcode',
+   531→        header: 'Barcode',
+   532→        size: 120,
+   533→        cell: ({ row }) => (
+   534→          <span className="font-mono text-xs text-muted-foreground">
+   535→            {row.original.barcode || '-'}
+   536→          </span>
+   537→        ),
+   538→      },
+   539→      {
+   540→        accessorKey: 'sku',
+   541→        header: 'SKU',
+   542→        size: 100,
+   543→        cell: ({ row }) => (
+   544→          <span className="font-mono text-xs text-muted-foreground">
+   545→            {row.original.sku || '-'}
+   546→          </span>
+   547→        ),
+   548→      },
+   549→      {
+   550→        accessorKey: 'category',
+   551→        header: 'Kategori',
+   552→        size: 120,
+   553→        cell: ({ row }) => (
+   554→          <Badge variant="outline" className="text-xs">
+   555→            {row.original.category?.name || '-'}
+   556→          </Badge>
+   557→        ),
+   558→      },
+   559→      {
+   560→        accessorKey: 'costPrice',
+   561→        header: ({ column }) => (
+   562→          <Button
+   563→            variant="ghost"
+   564→            size="sm"
+   565→            className="-ml-3 h-8"
+   566→            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+   567→          >
+   568→            Harga Modal
+   569→            {column.getIsSorted() === 'asc' ? (
+   570→              <ChevronUp className="ml-1 size-4" />
+   571→            ) : column.getIsSorted() === 'desc' ? (
+   572→              <ChevronDown className="ml-1 size-4" />
+   573→            ) : (
+   574→              <ChevronsUpDown className="ml-1 size-4 opacity-50" />
+   575→            )}
+   576→          </Button>
+   577→        ),
+   578→        size: 130,
+   579→        cell: ({ row }) => (
+   580→          <span className="text-sm text-muted-foreground">
+   581→            {formatRupiah(row.original.costPrice)}
+   582→          </span>
+   583→        ),
+   584→      },
+   585→      {
+   586→        accessorKey: 'sellPrice',
+   587→        header: ({ column }) => (
+   588→          <Button
+   589→            variant="ghost"
+   590→            size="sm"
+   591→            className="-ml-3 h-8"
+   592→            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+   593→          >
+   594→            Harga Jual
+   595→            {column.getIsSorted() === 'asc' ? (
+   596→              <ChevronUp className="ml-1 size-4" />
+   597→            ) : column.getIsSorted() === 'desc' ? (
+   598→              <ChevronDown className="ml-1 size-4" />
+   599→            ) : (
+   600→              <ChevronsUpDown className="ml-1 size-4 opacity-50" />
+   601→            )}
+   602→          </Button>
+   603→        ),
+   604→        size: 130,
+   605→        cell: ({ row }) => (
+   606→          <span className="text-sm font-medium">
+   607→            {formatRupiah(row.original.sellPrice)}
+   608→          </span>
+   609→        ),
+   610→      },
+   611→      {
+   612→        accessorKey: 'stock',
+   613→        header: ({ column }) => (
+   614→          <Button
+   615→            variant="ghost"
+   616→            size="sm"
+   617→            className="-ml-3 h-8"
+   618→            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+   619→          >
+   620→            Stok
+   621→            {column.getIsSorted() === 'asc' ? (
+   622→              <ChevronUp className="ml-1 size-4" />
+   623→            ) : column.getIsSorted() === 'desc' ? (
+   624→              <ChevronDown className="ml-1 size-4" />
+   625→            ) : (
+   626→              <ChevronsUpDown className="ml-1 size-4 opacity-50" />
+   627→            )}
+   628→          </Button>
+   629→        ),
+   630→        size: 80,
+   631→        cell: ({ row }) => (
+   632→          <span
+   633→            className={cn(
+   634→              getStockColor(row.original.stock, row.original.minStock)
+   635→            )}
+   636→          >
+   637→            {row.original.stock} {row.original.unit}
+   638→          </span>
+   639→        ),
+   640→      },
+   641→      {
+   642→        accessorKey: 'isActive',
+   643→        header: 'Status',
+   644→        size: 100,
+   645→        cell: ({ row }) => getStatusBadge(row.original.isActive),
+   646→      },
+   647→      {
+   648→        id: 'actions',
+   649→        header: 'Aksi',
+   650→        size: 80,
+   651→        cell: ({ row }) => (
+   652→          <DropdownMenu>
+   653→            <DropdownMenuTrigger asChild>
+   654→              <Button variant="ghost" size="icon" className="size-8">
+   655→                <ChevronDown className="size-4" />
+   656→                <span className="sr-only">Aksi</span>
+   657→              </Button>
+   658→            </DropdownMenuTrigger>
+   659→            <DropdownMenuContent align="end">
+   660→              <DropdownMenuItem onClick={() => openEditDialog(row.original)}>
+   661→                <Pencil className="size-4" />
+   662→                <span>Edit</span>
+   663→              </DropdownMenuItem>
+   664→              <DropdownMenuSeparator />
+   665→              <DropdownMenuItem
+   666→                variant="destructive"
+   667→                onClick={() => openDeleteDialog(row.original)}
+   668→              >
+   669→                <Trash2 className="size-4" />
+   670→                <span>Hapus</span>
+   671→              </DropdownMenuItem>
+   672→            </DropdownMenuContent>
+   673→          </DropdownMenu>
+   674→        ),
+   675→      },
+   676→    ],
+   677→    [openEditDialog, openDeleteDialog]
+   678→  );
+   679→
+   680→  // ── Table Instance ──────────────────────────────────────────────────────────
+   681→
+   682→  const table = useReactTable({
+   683→    data: products,
+   684→    columns,
+   685→    state: { sorting },
+   686→    onSortingChange: setSorting,
+   687→    getCoreRowModel: getCoreRowModel(),
+   688→    getSortedRowModel: getSortedRowModel(),
+   689→    getPaginationRowModel: getPaginationRowModel(),
+   690→    manualPagination: true,
+   691→    pageCount: totalPages,
+   692→  });
+   693→
+   694→  // ── Form Content (shared between Dialog & Sheet) ─────────────────────────────
+   695→
+   696→  const isMutating = createMutation.isPending || updateMutation.isPending;
+   697→
+   698→  const formContent = (
+   699→    <Form {...form}>
+   700→      <form
+   701→        onSubmit={form.handleSubmit(onSubmitForm)}
+   702→        className="space-y-4 max-h-[60vh] overflow-y-auto pr-1"
+   703→      >
+   704→        <FormField
+   705→          control={form.control}
+   706→          name="name"
+   707→          render={({ field }) => (
+   708→            <FormItem>
+   709→              <FormLabel>Nama Produk *</FormLabel>
+   710→              <FormControl>
+   711→                <Input placeholder="Masukkan nama produk" {...field} />
+   712→              </FormControl>
+   713→              <FormMessage />
+   714→            </FormItem>
+   715→          )}
+   716→        />
+   717→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   718→          <FormField
+   719→            control={form.control}
+   720→            name="barcode"
+   721→            render={({ field }) => (
+   722→              <FormItem>
+   723→                <FormLabel>Barcode</FormLabel>
+   724→                <FormControl>
+   725→                  <Input placeholder="Scan atau ketik barcode" {...field} />
+   726→                </FormControl>
+   727→                <FormMessage />
+   728→              </FormItem>
+   729→            )}
+   730→          />
+   731→          <FormField
+   732→            control={form.control}
+   733→            name="sku"
+   734→            render={({ field }) => (
+   735→              <FormItem>
+   736→                <FormLabel>SKU</FormLabel>
+   737→                <FormControl>
+   738→                  <Input placeholder="Kode SKU produk" {...field} />
+   739→                </FormControl>
+   740→                <FormMessage />
+   741→              </FormItem>
+   742→            )}
+   743→          />
+   744→        </div>
+   745→        <FormField
+   746→          control={form.control}
+   747→          name="categoryId"
+   748→          render={({ field }) => (
+   749→            <FormItem>
+   750→              <FormLabel>Kategori</FormLabel>
+   751→              <Select
+   752→                onValueChange={field.onChange}
+   753→                value={field.value ?? ''}
+   754→              >
+   755→                <FormControl>
+   756→                  <SelectTrigger className="w-full">
+   757→                    <SelectValue placeholder="Pilih kategori" />
+   758→                  </SelectTrigger>
+   759→                </FormControl>
+   760→                <SelectContent>
+   761→                  {categories.map((cat) => (
+   762→                    <SelectItem key={cat.id} value={cat.id}>
+   763→                      {cat.name}
+   764→                    </SelectItem>
+   765→                  ))}
+   766→                </SelectContent>
+   767→              </Select>
+   768→              <FormMessage />
+   769→            </FormItem>
+   770→          )}
+   771→        />
+   772→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   773→          <FormField
+   774→            control={form.control}
+   775→            name="unit"
+   776→            render={({ field }) => (
+   777→              <FormItem>
+   778→                <FormLabel>Satuan</FormLabel>
+   779→                <FormControl>
+   780→                  <Input placeholder="pcs" {...field} />
+   781→                </FormControl>
+   782→                <FormMessage />
+   783→              </FormItem>
+   784→            )}
+   785→          />
+   786→          <FormField
+   787→            control={form.control}
+   788→            name="image"
+   789→            render={({ field }) => (
+   790→              <FormItem>
+   791→                <FormLabel>Foto</FormLabel>
+   792→                <div className="flex items-center gap-2">
+   793→                  <FormControl>
+   794→                    <Input placeholder="Nama file foto" {...field} />
+   795→                  </FormControl>
+   796→                  <Button
+   797→                    type="button"
+   798→                    variant="outline"
+   799→                    size="icon"
+   800→                    className="flex-shrink-0"
+   801→                    onClick={() => {
+   802→                      const val = prompt('Masukkan nama file foto:');
+   803→                      if (val !== null) field.onChange(val);
+   804→                    }}
+   805→                  >
+   806→                    <ImagePlus className="size-4" />
+   807→                  </Button>
+   808→                </div>
+   809→                <FormMessage />
+   810→              </FormItem>
+   811→            )}
+   812→          />
+   813→        </div>
+   814→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   815→          <FormField
+   816→            control={form.control}
+   817→            name="costPrice"
+   818→            render={({ field }) => (
+   819→              <FormItem>
+   820→                <FormLabel>Harga Modal *</FormLabel>
+   821→                <FormControl>
+   822→                  <Input
+   823→                    type="number"
+   824→                    min="0"
+   825→                    placeholder="0"
+   826→                    {...field}
+   827→                  />
+   828→                </FormControl>
+   829→                <FormMessage />
+   830→              </FormItem>
+   831→            )}
+   832→          />
+   833→          <FormField
+   834→            control={form.control}
+   835→            name="sellPrice"
+   836→            render={({ field }) => (
+   837→              <FormItem>
+   838→                <FormLabel>Harga Jual *</FormLabel>
+   839→                <FormControl>
+   840→                  <Input
+   841→                    type="number"
+   842→                    min="0"
+   843→                    placeholder="0"
+   844→                    {...field}
+   845→                  />
+   846→                </FormControl>
+   847→                <FormMessage />
+   848→              </FormItem>
+   849→            )}
+   850→          />
+   851→        </div>
+   852→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   853→          <FormField
+   854→            control={form.control}
+   855→            name="stock"
+   856→            render={({ field }) => (
+   857→              <FormItem>
+   858→                <FormLabel>Stok</FormLabel>
+   859→                <FormControl>
+   860→                  <Input
+   861→                    type="number"
+   862→                    min="0"
+   863→                    placeholder="0"
+   864→                    {...field}
+   865→                  />
+   866→                </FormControl>
+   867→                <FormMessage />
+   868→              </FormItem>
+   869→            )}
+   870→          />
+   871→          <FormField
+   872→            control={form.control}
+   873→            name="minStock"
+   874→            render={({ field }) => (
+   875→              <FormItem>
+   876→                <FormLabel>Minimum Stok</FormLabel>
+   877→                <FormControl>
+   878→                  <Input
+   879→                    type="number"
+   880→                    min="0"
+   881→                    placeholder="5"
+   882→                    {...field}
+   883→                  />
+   884→                </FormControl>
+   885→                <FormMessage />
+   886→              </FormItem>
+   887→            )}
+   888→          />
+   889→        </div>
+   890→        <FormField
+   891→          control={form.control}
+   892→          name="isActive"
+   893→          render={({ field }) => (
+   894→            <FormItem className="flex items-center justify-between rounded-lg border p-3">
+   895→              <div className="space-y-0.5">
+   896→                <FormLabel className="text-sm">Status Aktif</FormLabel>
+   897→                <p className="text-xs text-muted-foreground">
+   898→                  Produk aktif akan muncul di kasir
+   899→                </p>
+   900→              </div>
+   901→              <FormControl>
+   902→                <Switch
+   903→                  checked={field.value}
+   904→                  onCheckedChange={field.onChange}
+   905→                />
+   906→              </FormControl>
+   907→            </FormItem>
+   908→          )}
+   909→        />
+   910→      </form>
+   911→    </Form>
+   912→  );
+   913→
+   914→  // ── Render ──────────────────────────────────────────────────────────────────
+   915→
+   916→  return (
+   917→    <motion.div
+   918→      variants={containerVariants}
+   919→      initial="hidden"
+   920→      animate="visible"
+   921→      className="space-y-6"
+   922→    >
+   923→      {/* ── Page Header ─────────────────────────────────────────────────────── */}
+   924→      <motion.div
+   925→        variants={itemVariants}
+   926→        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+   927→      >
+   928→        <div>
+   929→          <h1 className="text-2xl font-bold tracking-tight">Produk</h1>
+   930→          <p className="text-muted-foreground text-sm mt-1">
+   931→            Kelola daftar produk toko Anda
+   932→          </p>
+   933→        </div>
+   934→        <Button onClick={openAddDialog} className="bg-emerald-600 hover:bg-emerald-700">
+   935→          <Plus className="size-4" />
+   936→          <span>Tambah Produk</span>
+   937→        </Button>
+   938→      </motion.div>
+   939→
+   940→      {/* ── Filter / Search Bar ─────────────────────────────────────────────── */}
+   941→      <motion.div
+   942→        variants={itemVariants}
+   943→        className="flex flex-col sm:flex-row gap-3"
+   944→      >
+   945→        <div className="relative flex-1">
+   946→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   947→          <Input
+   948→            placeholder="Cari nama, barcode, atau SKU..."
+   949→            value={search}
+   950→            onChange={(e) => handleSearchChange(e.target.value)}
+   951→            className="pl-9"
+   952→          />
+   953→        </div>
+   954→        <Select value={categoryId || 'all'} onValueChange={handleCategoryChange}>
+   955→          <SelectTrigger className="w-full sm:w-[180px]">
+   956→            <SelectValue placeholder="Semua Kategori" />
+   957→          </SelectTrigger>
+   958→          <SelectContent>
+   959→            <SelectItem value="all">Semua Kategori</SelectItem>
+   960→            {categories.map((cat) => (
+   961→              <SelectItem key={cat.id} value={cat.id}>
+   962→                {cat.name}
+   963→              </SelectItem>
+   964→            ))}
+   965→          </SelectContent>
+   966→        </Select>
+   967→        <Select value={statusFilter || 'all'} onValueChange={handleStatusChange}>
+   968→          <SelectTrigger className="w-full sm:w-[150px]">
+   969→            <SelectValue placeholder="Semua Status" />
+   970→          </SelectTrigger>
+   971→          <SelectContent>
+   972→            <SelectItem value="all">Semua Status</SelectItem>
+   973→            <SelectItem value="true">Aktif</SelectItem>
+   974→            <SelectItem value="false">Tidak Aktif</SelectItem>
+   975→          </SelectContent>
+   976→        </Select>
+   977→      </motion.div>
+   978→
+   979→      {/* ── Data Table ───────────────────────────────────────────────────────── */}
+   980→      <motion.div variants={itemVariants} className="rounded-xl border bg-card shadow-sm">
+   981→        <div className="overflow-x-auto">
+   982→          <Table>
+   983→            <TableHeader>
+   984→              {table.getHeaderGroups().map((headerGroup) => (
+   985→                <TableRow key={headerGroup.id}>
+   986→                  {headerGroup.headers.map((header) => (
+   987→                    <TableHead
+   988→                      key={header.id}
+   989→                      style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}
+   990→                    >
+   991→                      {header.isPlaceholder
+   992→                        ? null
+   993→                        : flexRender(header.column.columnDef.header, header.getContext())}
+   994→                    </TableHead>
+   995→                  ))}
+   996→                </TableRow>
+   997→              ))}
+   998→            </TableHeader>
+   999→            <TableBody>
+  1000→              {isLoading ? (
+  1001→                Array.from({ length: perPage }).map((_, i) => (
+  1002→                  <TableRow key={i}>
+  1003→                    <TableCell>
+  1004→                      <Skeleton className="h-4 w-6" />
+  1005→                    </TableCell>
+  1006→                    <TableCell>
+  1007→                      <Skeleton className="h-10 w-10 rounded-lg" />
+  1008→                    </TableCell>
+  1009→                    <TableCell>
+  1010→                      <Skeleton className="h-4 w-[150px]" />
+  1011→                    </TableCell>
+  1012→                    <TableCell>
+  1013→                      <Skeleton className="h-4 w-[80px]" />
+  1014→                    </TableCell>
+  1015→                    <TableCell>
+  1016→                      <Skeleton className="h-4 w-[60px]" />
+  1017→                    </TableCell>
+  1018→                    <TableCell>
+  1019→                      <Skeleton className="h-5 w-[80px] rounded-full" />
+  1020→                    </TableCell>
+  1021→                    <TableCell>
+  1022→                      <Skeleton className="h-4 w-[90px]" />
+  1023→                    </TableCell>
+  1024→                    <TableCell>
+  1025→                      <Skeleton className="h-4 w-[90px]" />
+  1026→                    </TableCell>
+  1027→                    <TableCell>
+  1028→                      <Skeleton className="h-4 w-[40px]" />
+  1029→                    </TableCell>
+  1030→                    <TableCell>
+  1031→                      <Skeleton className="h-5 w-[70px] rounded-full" />
+  1032→                    </TableCell>
+  1033→                    <TableCell>
+  1034→                      <Skeleton className="h-8 w-8 rounded-md" />
+  1035→                    </TableCell>
+  1036→                  </TableRow>
+  1037→                ))
+  1038→              ) : products.length === 0 ? (
+  1039→                <TableRow>
+  1040→                  <TableCell colSpan={columns.length} className="h-40 text-center">
+  1041→                    <div className="flex flex-col items-center justify-center gap-2">
+  1042→                      <Package className="size-10 text-muted-foreground/50" />
+  1043→                      <p className="text-muted-foreground text-sm">
+  1044→                        {search || categoryId || statusFilter
+  1045→                          ? 'Tidak ada produk yang sesuai dengan filter'
+  1046→                          : 'Belum ada produk. Klik "Tambah Produk" untuk memulai.'}
+  1047→                      </p>
+  1048→                    </div>
+  1049→                  </TableCell>
+  1050→                </TableRow>
+  1051→              ) : (
+  1052→                table.getRowModel().rows.map((row) => (
+  1053→                  <TableRow key={row.id}>
+  1054→                    {row.getVisibleCells().map((cell) => (
+  1055→                      <TableCell key={cell.id}>
+  1056→                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+  1057→                      </TableCell>
+  1058→                    ))}
+  1059→                  </TableRow>
+  1060→                ))
+  1061→              )}
+  1062→            </TableBody>
+  1063→          </Table>
+  1064→        </div>
+  1065→
+  1066→        {/* ── Pagination ─────────────────────────────────────────────────────── */}
+  1067→        {totalProducts > 0 && (
+  1068→          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t">
+  1069→            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+  1070→              <span>
+  1071→                Menampilkan {startItem}-{endItem} dari {totalProducts}
+  1072→              </span>
+  1073→              <Select value={String(perPage)} onValueChange={handlePerPageChange}>
+  1074→                <SelectTrigger className="w-[70px] h-8">
+  1075→                  <SelectValue />
+  1076→                </SelectTrigger>
+  1077→                <SelectContent>
+  1078→                  <SelectItem value="10">10</SelectItem>
+  1079→                  <SelectItem value="25">25</SelectItem>
+  1080→                  <SelectItem value="50">50</SelectItem>
+  1081→                </SelectContent>
+  1082→              </Select>
+  1083→              <span>per halaman</span>
+  1084→            </div>
+  1085→            <div className="flex items-center gap-2">
+  1086→              <Button
+  1087→                variant="outline"
+  1088→                size="sm"
+  1089→                onClick={() => setPage((p) => Math.max(1, p - 1))}
+  1090→                disabled={page <= 1}
+  1091→              >
+  1092→                <ChevronLeft className="size-4" />
+  1093→                <span className="sm:hidden">Sebelumnya</span>
+  1094→              </Button>
+  1095→              <div className="flex items-center gap-1 text-sm">
+  1096→                <span className="px-2 py-1 rounded-md bg-primary text-primary-foreground font-medium">
+  1097→                  {page}
+  1098→                </span>
+  1099→                <span className="text-muted-foreground">dari {totalPages}</span>
+  1100→              </div>
+  1101→              <Button
+  1102→                variant="outline"
+  1103→                size="sm"
+  1104→                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+  1105→                disabled={page >= totalPages}
+  1106→              >
+  1107→                <span className="sm:hidden">Berikutnya</span>
+  1108→                <ChevronRight className="size-4" />
+  1109→              </Button>
+  1110→            </div>
+  1111→          </div>
+  1112→        )}
+  1113→      </motion.div>
+  1114→
+  1115→      {/* ── Add/Edit Dialog (Desktop) ───────────────────────────────────────── */}
+  1116→      <Dialog open={formOpen && !editingProduct} onOpenChange={setFormOpen}>
+  1117→        <DialogContent className="sm:max-w-2xl">
+  1118→          <DialogHeader>
+  1119→            <DialogTitle>Tambah Produk Baru</DialogTitle>
+  1120→            <DialogDescription>
+  1121→              Isi detail produk yang akan ditambahkan ke toko
+  1122→            </DialogDescription>
+  1123→          </DialogHeader>
+  1124→          {formContent}
+  1125→          <DialogFooter className="pt-4">
+  1126→            <Button
+  1127→              variant="outline"
+  1128→              onClick={closeFormDialog}
+  1129→              disabled={isMutating}
+  1130→            >
+  1131→              Batal
+  1132→            </Button>
+  1133→            <Button
+  1134→              type="button"
+  1135→              onClick={form.handleSubmit(onSubmitForm)}
+  1136→              disabled={isMutating}
+  1137→              className="bg-emerald-600 hover:bg-emerald-700"
+  1138→            >
+  1139→              {isMutating && <Loader2 className="size-4 animate-spin" />}
+  1140→              {isMutating ? 'Menyimpan...' : 'Simpan Produk'}
+  1141→            </Button>
+  1142→          </DialogFooter>
+  1143→        </DialogContent>
+  1144→      </Dialog>
+  1145→
+  1146→      {/* ── Edit Product Dialog (Desktop) ────────────────────────────────────── */}
+  1147→      <Dialog open={formOpen && !!editingProduct} onOpenChange={setFormOpen}>
+  1148→        <DialogContent className="sm:max-w-2xl">
+  1149→          <DialogHeader>
+  1150→            <DialogTitle>Edit Produk</DialogTitle>
+  1151→            <DialogDescription>
+  1152→              Ubah detail produk {editingProduct?.name}
+  1153→            </DialogDescription>
+  1154→          </DialogHeader>
+  1155→          {formContent}
+  1156→          <DialogFooter className="pt-4">
+  1157→            <Button
+  1158→              variant="outline"
+  1159→              onClick={closeFormDialog}
+  1160→              disabled={isMutating}
+  1161→            >
+  1162→              Batal
+  1163→            </Button>
+  1164→            <Button
+  1165→              type="button"
+  1166→              onClick={form.handleSubmit(onSubmitForm)}
+  1167→              disabled={isMutating}
+  1168→              className="bg-emerald-600 hover:bg-emerald-700"
+  1169→            >
+  1170→              {isMutating && <Loader2 className="size-4 animate-spin" />}
+  1171→              {isMutating ? 'Menyimpan...' : 'Perbarui Produk'}
+  1172→            </Button>
+  1173→          </DialogFooter>
+  1174→        </DialogContent>
+  1175→      </Dialog>
+  1176→
+  1177→      {/* ── Add/Edit Sheet (Mobile) ───────────────────────────────────────────── */}
+  1178→      <Sheet open={formOpen} onOpenChange={setFormOpen}>
+  1179→        <SheetContent side="bottom" className="sm:max-h-[85vh] rounded-t-2xl">
+  1180→          <SheetHeader>
+  1181→            <SheetTitle>
+  1182→              {editingProduct ? 'Edit Produk' : 'Tambah Produk Baru'}
+  1183→            </SheetTitle>
+  1184→            <SheetDescription>
+  1185→              {editingProduct
+  1186→                ? 'Ubah detail produk'
+  1187→                : 'Isi detail produk yang akan ditambahkan'}
+  1188→            </SheetDescription>
+  1189→          </SheetHeader>
+  1190→          <div className="flex-1 overflow-y-auto px-4 pb-4">
+  1191→            {formContent}
+  1192→          </div>
+  1193→          <SheetFooter className="flex-row gap-2 border-t pt-4">
+  1194→            <Button
+  1195→              variant="outline"
+  1196→              className="flex-1"
+  1197→              onClick={closeFormDialog}
+  1198→              disabled={isMutating}
+  1199→            >
+  1200→              Batal
+  1201→            </Button>
+  1202→            <Button
+  1203→              type="button"
+  1204→              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+  1205→              onClick={form.handleSubmit(onSubmitForm)}
+  1206→              disabled={isMutating}
+  1207→            >
+  1208→              {isMutating && <Loader2 className="size-4 animate-spin" />}
+  1209→              {isMutating ? 'Menyimpan...' : 'Simpan'}
+  1210→            </Button>
+  1211→          </SheetFooter>
+  1212→        </SheetContent>
+  1213→      </Sheet>
+  1214→
+  1215→      {/* ── Delete Confirmation Dialog ────────────────────────────────────────── */}
+  1216→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+  1217→        <AlertDialogContent>
+  1218→          <AlertDialogHeader>
+  1219→            <AlertDialogTitle>Hapus Produk?</AlertDialogTitle>
+  1220→            <AlertDialogDescription>
+  1221→              Produk <span className="font-semibold">{deletingProduct?.name}</span>{' '}
+  1222→              akan dinonaktifkan. Lanjutkan?
+  1223→            </AlertDialogDescription>
+  1224→          </AlertDialogHeader>
+  1225→          <AlertDialogFooter>
+  1226→            <AlertDialogCancel disabled={deleteMutation.isPending}>
+  1227→              Batal
+  1228→            </AlertDialogCancel>
+  1229→            <AlertDialogAction
+  1230→              onClick={handleDeleteConfirm}
+  1231→              disabled={deleteMutation.isPending}
+  1232→              className="bg-destructive hover:bg-destructive/90"
+  1233→            >
+  1234→              {deleteMutation.isPending && (
+  1235→                <Loader2 className="size-4 animate-spin" />
+  1236→              )}
+  1237→              {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
+  1238→            </AlertDialogAction>
+  1239→          </AlertDialogFooter>
+  1240→        </AlertDialogContent>
+  1241→      </AlertDialog>
+  1242→    </motion.div>
+  1243→  );
+  1244→}
+  1245→

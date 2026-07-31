@@ -1,0 +1,911 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback } from 'react';
+     4→import { motion } from 'framer-motion';
+     5→import {
+     6→  useQuery,
+     7→  useMutation,
+     8→  useQueryClient,
+     9→} from '@tanstack/react-query';
+    10→import {
+    11→  useReactTable,
+    12→  getCoreRowModel,
+    13→  getPaginationRowModel,
+    14→  flexRender,
+    15→  type ColumnDef,
+    16→} from '@tanstack/react-table';
+    17→import { z } from 'zod';
+    18→import { zodResolver } from '@hookform/resolvers/zod';
+    19→import { useForm, useFieldArray, type Control } from 'react-hook-form';
+    20→import { toast } from 'sonner';
+    21→import {
+    22→  Plus,
+    23→  Search,
+    24→  ChevronLeft,
+    25→  ChevronRight,
+    26→  Eye,
+    27→  Loader2,
+    28→  PackageOpen,
+    29→  Trash2,
+    30→  X,
+    31→} from 'lucide-react';
+    32→import type { Purchase, PurchaseItem, Supplier, Product, PaginatedResponse } from '@/types';
+    33→
+    34→import { Button } from '@/components/ui/button';
+    35→import { Input } from '@/components/ui/input';
+    36→import { Badge } from '@/components/ui/badge';
+    37→import { Skeleton } from '@/components/ui/skeleton';
+    38→import { Label } from '@/components/ui/label';
+    39→import { Separator } from '@/components/ui/separator';
+    40→import {
+    41→  Table,
+    42→  TableHeader,
+    43→  TableBody,
+    44→  TableHead,
+    45→  TableRow,
+    46→  TableCell,
+    47→} from '@/components/ui/table';
+    48→import {
+    49→  Dialog,
+    50→  DialogContent,
+    51→  DialogHeader,
+    52→  DialogTitle,
+    53→  DialogDescription,
+    54→  DialogFooter,
+    55→} from '@/components/ui/dialog';
+    56→import {
+    57→  Form,
+    58→  FormControl,
+    59→  FormField,
+    60→  FormItem,
+    61→  FormLabel,
+    62→  FormMessage,
+    63→} from '@/components/ui/form';
+    64→import {
+    65→  Select,
+    66→  SelectContent,
+    67→  SelectItem,
+    68→  SelectTrigger,
+    69→  SelectValue,
+    70→} from '@/components/ui/select';
+    71→import { Textarea } from '@/components/ui/textarea';
+    72→import { ScrollArea } from '@/components/ui/scroll-area';
+    73→
+    74→// ─── Helpers ──────────────────────────────────────────────────────────────────
+    75→
+    76→function formatRupiah(amount: number): string {
+    77→  return new Intl.NumberFormat('id-ID', {
+    78→    style: 'currency',
+    79→    currency: 'IDR',
+    80→    minimumFractionDigits: 0,
+    81→    maximumFractionDigits: 0,
+    82→  }).format(amount);
+    83→}
+    84→
+    85→function formatDate(dateStr: string): string {
+    86→  return new Date(dateStr).toLocaleDateString('id-ID', {
+    87→    day: '2-digit',
+    88→    month: 'short',
+    89→    year: 'numeric',
+    90→  });
+    91→}
+    92→
+    93→// ─── Animation Variants ──────────────────────────────────────────────────────
+    94→
+    95→const containerVariants = {
+    96→  hidden: { opacity: 0 },
+    97→  visible: {
+    98→    opacity: 1,
+    99→    transition: { staggerChildren: 0.08 },
+   100→  },
+   101→};
+   102→
+   103→const itemVariants = {
+   104→  hidden: { opacity: 0, y: 20 },
+   105→  visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
+   106→};
+   107→
+   108→// ─── Status Badge ─────────────────────────────────────────────────────────────
+   109→
+   110→function getStatusBadge(status: string) {
+   111→  switch (status) {
+   112→    case 'received':
+   113→      return (
+   114→        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100">
+   115→          Diterima
+   116→        </Badge>
+   117→      );
+   118→    case 'pending':
+   119→      return (
+   120→        <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100">
+   121→          Tertunda
+   122→        </Badge>
+   123→      );
+   124→    case 'cancelled':
+   125→      return (
+   126→        <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100">
+   127→          Dibatalkan
+   128→        </Badge>
+   129→      );
+   130→    default:
+   131→      return <Badge variant="secondary">{status}</Badge>;
+   132→  }
+   133→}
+   134→
+   135→// ─── Form Schema ──────────────────────────────────────────────────────────────
+   136→
+   137→const purchaseItemSchema = z.object({
+   138→  productId: z.string().min(1, 'Produk wajib dipilih'),
+   139→  quantity: z.coerce.number().int().min(1, 'Minimal 1'),
+   140→  costPrice: z.coerce.number().min(0, 'Harga tidak boleh negatif'),
+   141→});
+   142→
+   143→type PurchaseItemFormData = z.infer<typeof purchaseItemSchema>;
+   144→
+   145→const purchaseFormSchema = z.object({
+   146→  supplierId: z.string().min(1, 'Supplier wajib dipilih'),
+   147→  notes: z.string().optional().or(z.literal('')),
+   148→  items: z.array(purchaseItemSchema).min(1, 'Minimal 1 item pembelian'),
+   149→});
+   150→
+   151→type PurchaseFormData = z.infer<typeof purchaseFormSchema>;
+   152→
+   153→// ─── Product Select Field ─────────────────────────────────────────────────────
+   154→
+   155→interface ProductSelectFieldProps {
+   156→  control: Control<PurchaseFormData>;
+   157→  index: number;
+   158→  products: Product[];
+   159→  productsLoading: boolean;
+   160→  onProductChange: (index: number, productId: string) => void;
+   161→}
+   162→
+   163→function ProductSelectField({ control, index, products, productsLoading, onProductChange }: ProductSelectFieldProps) {
+   164→  return (
+   165→    <FormField
+   166→      control={control}
+   167→      name={`items.${index}.productId`}
+   168→      render={({ field }) => (
+   169→        <FormItem>
+   170→          <FormLabel className="sr-only">Produk</FormLabel>
+   171→          <FormControl>
+   172→            <Select
+   173→              value={field.value}
+   174→              onValueChange={(val) => {
+   175→                field.onChange(val);
+   176→                onProductChange(index, val);
+   177→              }}
+   178→              disabled={productsLoading}
+   179→            >
+   180→              <SelectTrigger className="w-full">
+   181→                <SelectValue placeholder={productsLoading ? 'Memuat produk...' : 'Pilih produk'} />
+   182→              </SelectTrigger>
+   183→              <SelectContent>
+   184→                {products.map((product) => (
+   185→                  <SelectItem key={product.id} value={product.id}>
+   186→                    <div className="flex items-center justify-between gap-4 w-full">
+   187→                      <span className="truncate">{product.name}</span>
+   188→                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+   189→                        Stok: {product.stock} {product.unit}
+   190→                      </span>
+   191→                    </div>
+   192→                  </SelectItem>
+   193→                ))}
+   194→              </SelectContent>
+   195→            </Select>
+   196→          </FormControl>
+   197→          <FormMessage />
+   198→        </FormItem>
+   199→      )}
+   200→    />
+   201→  );
+   202→}
+   203→
+   204→// ─── Main Component ────────────────────────────────────────────────────────────
+   205→
+   206→export default function PurchasesPage() {
+   207→  const queryClient = useQueryClient();
+   208→
+   209→  // ── Filter State ────────────────────────────────────────────────────────────
+   210→  const [search, setSearch] = useState('');
+   211→  const [page, setPage] = useState(1);
+   212→  const [perPage, setPerPage] = useState(10);
+   213→
+   214→  // ── Dialog State ────────────────────────────────────────────────────────────
+   215→  const [addOpen, setAddOpen] = useState(false);
+   216→  const [detailOpen, setDetailOpen] = useState(false);
+   217→  const [detailId, setDetailId] = useState<string | null>(null);
+   218→
+   219→  // ── Form ───────────────────────────────────────────────────────────────────
+   220→  const form = useForm<PurchaseFormData>({
+   221→    resolver: zodResolver(purchaseFormSchema),
+   222→    defaultValues: {
+   223→      supplierId: '',
+   224→      notes: '',
+   225→      items: [{ productId: '', quantity: 1, costPrice: 0 }],
+   226→    },
+   227→  });
+   228→
+   229→  const { fields, append, remove } = useFieldArray({
+   230→    control: form.control,
+   231→    name: 'items',
+   232→  });
+   233→
+   234→  // ── Queries ────────────────────────────────────────────────────────────────
+   235→
+   236→  const purchasesQuery = useQuery<PaginatedResponse<Purchase>>({
+   237→    queryKey: ['purchases', page, perPage, search],
+   238→    queryFn: async () => {
+   239→      const params = new URLSearchParams({
+   240→        page: String(page),
+   241→        perPage: String(perPage),
+   242→      });
+   243→      if (search) params.set('search', search);
+   244→      const res = await fetch(`/api/purchases?${params.toString()}`);
+   245→      if (!res.ok) throw new Error('Gagal memuat pembelian');
+   246→      return res.json();
+   247→    },
+   248→  });
+   249→
+   250→  const suppliersQuery = useQuery<Supplier[]>({
+   251→    queryKey: ['suppliers-list'],
+   252→    queryFn: async () => {
+   253→      const res = await fetch('/api/suppliers?perPage=100');
+   254→      if (!res.ok) throw new Error('Gagal memuat supplier');
+   255→      const data = await res.json();
+   256→      return data.data ?? data;
+   257→    },
+   258→  });
+   259→
+   260→  const productsQuery = useQuery<Product[]>({
+   261→    queryKey: ['products-list'],
+   262→    queryFn: async () => {
+   263→      const res = await fetch('/api/products?perPage=200');
+   264→      if (!res.ok) throw new Error('Gagal memuat produk');
+   265→      const data = await res.json();
+   266→      return data.data ?? data;
+   267→    },
+   268→  });
+   269→
+   270→  const detailQuery = useQuery<Purchase>({
+   271→    queryKey: ['purchase-detail', detailId],
+   272→    queryFn: async () => {
+   273→      if (!detailId) throw new Error('No ID');
+   274→      const res = await fetch(`/api/purchases/${detailId}`);
+   275→      if (!res.ok) throw new Error('Gagal memuat detail pembelian');
+   276→      return res.json();
+   277→    },
+   278→    enabled: !!detailId,
+   279→  });
+   280→
+   281→  // ── Mutation ────────────────────────────────────────────────────────────────
+   282→
+   283→  const createMutation = useMutation({
+   284→    mutationFn: async (data: PurchaseFormData) => {
+   285→      const payload = {
+   286→        supplierId: data.supplierId,
+   287→        notes: data.notes || undefined,
+   288→        items: data.items.map((item) => ({
+   289→          productId: item.productId,
+   290→          quantity: item.quantity,
+   291→          costPrice: item.costPrice,
+   292→        })),
+   293→      };
+   294→      const res = await fetch('/api/purchases', {
+   295→        method: 'POST',
+   296→        headers: { 'Content-Type': 'application/json' },
+   297→        body: JSON.stringify(payload),
+   298→      });
+   299→      if (!res.ok) {
+   300→        const err = await res.json();
+   301→        throw new Error(err.error || 'Gagal menambah pembelian');
+   302→      }
+   303→      return res.json();
+   304→    },
+   305→    onSuccess: () => {
+   306→      toast.success('Pembelian berhasil ditambahkan');
+   307→      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+   308→      queryClient.invalidateQueries({ queryKey: ['products'] });
+   309→      closeAddDialog();
+   310→    },
+   311→    onError: (error) => {
+   312→      toast.error(error.message);
+   313→    },
+   314→  });
+   315→
+   316→  // ── Derived Data ────────────────────────────────────────────────────────────
+   317→
+   318→  const purchases = purchasesQuery.data?.data ?? [];
+   319→  const totalPurchases = purchasesQuery.data?.total ?? 0;
+   320→  const totalPages = purchasesQuery.data?.totalPages ?? 1;
+   321→  const isLoading = purchasesQuery.isLoading || purchasesQuery.isFetching;
+   322→  const isMutating = createMutation.isPending;
+   323→  const suppliers = suppliersQuery.data ?? [];
+   324→  const products = productsQuery.data ?? [];
+   325→  const detailData = detailQuery.data;
+   326→
+   327→  const startItem = (page - 1) * perPage + 1;
+   328→  const endItem = Math.min(page * perPage, totalPurchases);
+   329→
+   330→  // Watch items for grand total
+   331→  const watchItems = form.watch('items');
+   332→  const grandTotal = useMemo(() => {
+   333→    return watchItems.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
+   334→  }, [watchItems]);
+   335→
+   336→  // ── Handlers ────────────────────────────────────────────────────────────────
+   337→
+   338→  const openAddDialog = useCallback(() => {
+   339→    form.reset({
+   340→      supplierId: '',
+   341→      notes: '',
+   342→      items: [{ productId: '', quantity: 1, costPrice: 0 }],
+   343→    });
+   344→    setAddOpen(true);
+   345→  }, [form]);
+   346→
+   347→  const closeAddDialog = useCallback(() => {
+   348→    setAddOpen(false);
+   349→  }, []);
+   350→
+   351→  const openDetail = useCallback((id: string) => {
+   352→    setDetailId(id);
+   353→    setDetailOpen(true);
+   354→  }, []);
+   355→
+   356→  const closeDetail = useCallback(() => {
+   357→    setDetailOpen(false);
+   358→    setTimeout(() => setDetailId(null), 200);
+   359→  }, []);
+   360→
+   361→  const handleSearchChange = useCallback((value: string) => {
+   362→    setSearch(value);
+   363→    setPage(1);
+   364→  }, []);
+   365→
+   366→  const handlePerPageChange = useCallback((value: string) => {
+   367→    setPerPage(Number(value));
+   368→    setPage(1);
+   369→  }, []);
+   370→
+   371→  const handleAddItem = useCallback(() => {
+   372→    append({ productId: '', quantity: 1, costPrice: 0 });
+   373→  }, [append]);
+   374→
+   375→  const handleProductChange = useCallback(
+   376→    (index: number, productId: string) => {
+   377→      const product = products.find((p) => p.id === productId);
+   378→      if (product) {
+   379→        form.setValue(`items.${index}.costPrice`, product.costPrice, { shouldValidate: true });
+   380→      }
+   381→    },
+   382→    [form, products],
+   383→  );
+   384→
+   385→  const onSubmitForm = useCallback(
+   386→    (data: PurchaseFormData) => {
+   387→      createMutation.mutate(data);
+   388→    },
+   389→    [createMutation],
+   390→  );
+   391→
+   392→  // ── Table Columns ─────────────────────────────────────────────────────────
+   393→
+   394→  const columns = useMemo<ColumnDef<Purchase>[]>(
+   395→    () => [
+   396→      {
+   397→        accessorKey: 'index',
+   398→        header: 'No',
+   399→        size: 50,
+   400→        cell: ({ row }) => (
+   401→          <span className="text-muted-foreground text-sm">{row.index + 1}</span>
+   402→        ),
+   403→      },
+   404→      {
+   405→        accessorKey: 'invoiceNumber',
+   406→        header: 'Invoice',
+   407→        size: 170,
+   408→        cell: ({ row }) => (
+   409→          <span className="font-mono text-sm font-medium">{row.original.invoiceNumber}</span>
+   410→        ),
+   411→      },
+   412→      {
+   413→        accessorKey: 'createdAt',
+   414→        header: 'Tanggal',
+   415→        size: 130,
+   416→        cell: ({ row }) => (
+   417→          <span className="text-muted-foreground text-sm">{formatDate(row.original.createdAt)}</span>
+   418→        ),
+   419→      },
+   420→      {
+   421→        accessorKey: 'supplier',
+   422→        header: 'Supplier',
+   423→        size: 160,
+   424→        cell: ({ row }) => (
+   425→          <span className="text-sm">{row.original.supplier?.name || '-'}</span>
+   426→        ),
+   427→      },
+   428→      {
+   429→        accessorKey: 'totalAmount',
+   430→        header: 'Total',
+   431→        size: 150,
+   432→        cell: ({ row }) => (
+   433→          <span className="font-medium text-sm">{formatRupiah(row.original.totalAmount)}</span>
+   434→        ),
+   435→      },
+   436→      {
+   437→        accessorKey: 'status',
+   438→        header: 'Status',
+   439→        size: 110,
+   440→        cell: ({ row }) => getStatusBadge(row.original.status),
+   441→      },
+   442→      {
+   443→        id: 'actions',
+   444→        header: 'Aksi',
+   445→        size: 80,
+   446→        cell: ({ row }) => (
+   447→          <Button
+   448→            variant="ghost"
+   449→            size="sm"
+   450→            className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+   451→            onClick={(e) => {
+   452→              e.stopPropagation();
+   453→              openDetail(row.original.id);
+   454→            }}
+   455→          >
+   456→            <Eye className="size-4 mr-1" />
+   457→            Detail
+   458→          </Button>
+   459→        ),
+   460→      },
+   461→    ],
+   462→    [openDetail],
+   463→  );
+   464→
+   465→  // ── Table ─────────────────────────────────────────────────────────────────
+   466→
+   467→  const table = useReactTable({
+   468→    data: purchases,
+   469→    columns,
+   470→    getCoreRowModel: getCoreRowModel(),
+   471→    getPaginationRowModel: getPaginationRowModel(),
+   472→    manualPagination: true,
+   473→    pageCount: totalPages,
+   474→    state: {
+   475→      pagination: { pageIndex: page - 1, pageSize: perPage },
+   476→    },
+   477→  });
+   478→
+   479→  // ── Render ─────────────────────────────────────────────────────────────────
+   480→
+   481→  return (
+   482→    <motion.div
+   483→      variants={containerVariants}
+   484→      initial="hidden"
+   485→      animate="visible"
+   486→      className="flex flex-col gap-6 p-4 md:p-6"
+   487→    >
+   488→      {/* ── Header ─────────────────────────────────────────────────────────── */}
+   489→      <motion.div
+   490→        variants={itemVariants}
+   491→        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+   492→      >
+   493→        <div>
+   494→          <h1 className="text-2xl font-bold tracking-tight">Pembelian Barang</h1>
+   495→          <p className="text-muted-foreground text-sm mt-1">
+   496→            Kelola pembelian barang dari supplier
+   497→          </p>
+   498→        </div>
+   499→        <Button onClick={openAddDialog} className="bg-emerald-600 hover:bg-emerald-700">
+   500→          <Plus className="size-4" />
+   501→          Tambah Pembelian
+   502→        </Button>
+   503→      </motion.div>
+   504→
+   505→      {/* ── Search & Table ──────────────────────────────────────────────────── */}
+   506→      <motion.div
+   507→        variants={itemVariants}
+   508→        className="border rounded-xl bg-card shadow-sm"
+   509→      >
+   510→        <div className="p-4 border-b">
+   511→          <div className="relative max-w-sm">
+   512→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   513→            <Input
+   514→              placeholder="Cari nomor invoice..."
+   515→              value={search}
+   516→              onChange={(e) => handleSearchChange(e.target.value)}
+   517→              className="pl-9"
+   518→            />
+   519→          </div>
+   520→        </div>
+   521→
+   522→        <div className="overflow-x-auto">
+   523→          <Table>
+   524→            <TableHeader>
+   525→              {table.getHeaderGroups().map((headerGroup) => (
+   526→                <TableRow key={headerGroup.id}>
+   527→                  {headerGroup.headers.map((header) => (
+   528→                    <TableHead key={header.id} style={{ width: header.getSize() }}>
+   529→                      {flexRender(header.column.columnDef.header, header.getContext())}
+   530→                    </TableHead>
+   531→                  ))}
+   532→                </TableRow>
+   533→              ))}
+   534→            </TableHeader>
+   535→            <TableBody>
+   536→              {isLoading ? (
+   537→                Array.from({ length: perPage }).map((_, i) => (
+   538→                  <TableRow key={i}>
+   539→                    <TableCell><Skeleton className="h-4 w-6" /></TableCell>
+   540→                    <TableCell><Skeleton className="h-4 w-[140px]" /></TableCell>
+   541→                    <TableCell><Skeleton className="h-4 w-[110px]" /></TableCell>
+   542→                    <TableCell><Skeleton className="h-4 w-[130px]" /></TableCell>
+   543→                    <TableCell><Skeleton className="h-4 w-[120px]" /></TableCell>
+   544→                    <TableCell><Skeleton className="h-5 w-[90px] rounded-full" /></TableCell>
+   545→                    <TableCell><Skeleton className="h-8 w-16 rounded-md" /></TableCell>
+   546→                  </TableRow>
+   547→                ))
+   548→              ) : purchases.length === 0 ? (
+   549→                <TableRow>
+   550→                  <TableCell colSpan={columns.length} className="h-40 text-center">
+   551→                    <div className="flex flex-col items-center justify-center gap-2">
+   552→                      <PackageOpen className="size-10 text-muted-foreground/50" />
+   553→                      <p className="text-muted-foreground text-sm">
+   554→                        {search
+   555→                          ? 'Tidak ada pembelian yang sesuai dengan pencarian'
+   556→                          : 'Belum ada pembelian. Klik "Tambah Pembelian" untuk memulai.'}
+   557→                      </p>
+   558→                    </div>
+   559→                  </TableCell>
+   560→                </TableRow>
+   561→              ) : (
+   562→                table.getRowModel().rows.map((row) => (
+   563→                  <TableRow
+   564→                    key={row.id}
+   565→                    className="cursor-pointer hover:bg-muted/50"
+   566→                    onClick={() => openDetail(row.original.id)}
+   567→                  >
+   568→                    {row.getVisibleCells().map((cell) => (
+   569→                      <TableCell key={cell.id}>
+   570→                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+   571→                      </TableCell>
+   572→                    ))}
+   573→                  </TableRow>
+   574→                ))
+   575→              )}
+   576→            </TableBody>
+   577→          </Table>
+   578→        </div>
+   579→
+   580→        {/* ── Pagination ─────────────────────────────────────────────────── */}
+   581→        {totalPurchases > 0 && (
+   582→          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t">
+   583→            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+   584→              <span>
+   585→                Menampilkan {startItem}-{endItem} dari {totalPurchases}
+   586→              </span>
+   587→              <Select value={String(perPage)} onValueChange={handlePerPageChange}>
+   588→                <SelectTrigger className="w-[70px] h-8">
+   589→                  <SelectValue />
+   590→                </SelectTrigger>
+   591→                <SelectContent>
+   592→                  <SelectItem value="10">10</SelectItem>
+   593→                  <SelectItem value="25">25</SelectItem>
+   594→                  <SelectItem value="50">50</SelectItem>
+   595→                </SelectContent>
+   596→              </Select>
+   597→              <span>per halaman</span>
+   598→            </div>
+   599→            <div className="flex items-center gap-2">
+   600→              <Button
+   601→                variant="outline"
+   602→                size="sm"
+   603→                onClick={() => setPage((p) => Math.max(1, p - 1))}
+   604→                disabled={page <= 1}
+   605→              >
+   606→                <ChevronLeft className="size-4" />
+   607→                <span className="sm:hidden">Sebelumnya</span>
+   608→              </Button>
+   609→              <div className="flex items-center gap-1 text-sm">
+   610→                <span className="px-2 py-1 rounded-md bg-primary text-primary-foreground font-medium">
+   611→                  {page}
+   612→                </span>
+   613→                <span className="text-muted-foreground">dari {totalPages}</span>
+   614→              </div>
+   615→              <Button
+   616→                variant="outline"
+   617→                size="sm"
+   618→                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+   619→                disabled={page >= totalPages}
+   620→              >
+   621→                <span className="sm:hidden">Berikutnya</span>
+   622→                <ChevronRight className="size-4" />
+   623→              </Button>
+   624→            </div>
+   625→          </div>
+   626→        )}
+   627→      </motion.div>
+   628→
+   629→      {/* ── Add Purchase Dialog ────────────────────────────────────────────── */}
+   630→      <Dialog open={addOpen} onOpenChange={(open) => { if (!open) closeAddDialog(); }}>
+   631→        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+   632→          <DialogHeader>
+   633→            <DialogTitle>Tambah Pembelian</DialogTitle>
+   634→            <DialogDescription>
+   635→              Isi detail pembelian barang dari supplier
+   636→            </DialogDescription>
+   637→          </DialogHeader>
+   638→
+   639→          <Form {...form}>
+   640→            <form onSubmit={(e) => e.preventDefault()} className="space-y-5">
+   641→              {/* Supplier & Notes */}
+   642→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   643→                <FormField
+   644→                  control={form.control}
+   645→                  name="supplierId"
+   646→                  render={({ field }) => (
+   647→                    <FormItem>
+   648→                      <FormLabel>Supplier</FormLabel>
+   649→                      <FormControl>
+   650→                        <Select value={field.value} onValueChange={field.onChange}>
+   651→                          <SelectTrigger>
+   652→                            <SelectValue placeholder="Pilih supplier" />
+   653→                          </SelectTrigger>
+   654→                          <SelectContent>
+   655→                            {suppliers.map((supplier) => (
+   656→                              <SelectItem key={supplier.id} value={supplier.id}>
+   657→                                {supplier.name}
+   658→                              </SelectItem>
+   659→                            ))}
+   660→                          </SelectContent>
+   661→                        </Select>
+   662→                      </FormControl>
+   663→                      <FormMessage />
+   664→                    </FormItem>
+   665→                  )}
+   666→                />
+   667→                <FormField
+   668→                  control={form.control}
+   669→                  name="notes"
+   670→                  render={({ field }) => (
+   671→                    <FormItem>
+   672→                      <FormLabel>Catatan</FormLabel>
+   673→                      <FormControl>
+   674→                        <Textarea placeholder="Catatan pembelian (opsional)" {...field} />
+   675→                      </FormControl>
+   676→                      <FormMessage />
+   677→                    </FormItem>
+   678→                  )}
+   679→                />
+   680→              </div>
+   681→
+   682→              <Separator />
+   683→
+   684→              {/* Items Header */}
+   685→              <div className="flex items-center justify-between">
+   686→                <h4 className="font-semibold text-sm">Item Pembelian</h4>
+   687→                <Button type="button" variant="outline" size="sm" onClick={handleAddItem}>
+   688→                  <Plus className="size-4" />
+   689→                  Tambah Item
+   690→                </Button>
+   691→              </div>
+   692→
+   693→              {/* Items List */}
+   694→              <div className="space-y-3">
+   695→                {fields.map((field, index) => {
+   696→                  const itemTotal = (watchItems[index]?.quantity ?? 0) * (watchItems[index]?.costPrice ?? 0);
+   697→                  return (
+   698→                    <div
+   699→                      key={field.id}
+   700→                      className="grid grid-cols-12 gap-2 items-start border rounded-lg p-3 bg-muted/30"
+   701→                    >
+   702→                      {/* Product Select - spans 4 cols on sm+ */}
+   703→                      <div className="col-span-12 sm:col-span-4">
+   704→                        <Label className="text-xs text-muted-foreground mb-1 block">Produk</Label>
+   705→                        <ProductSelectField
+   706→                          control={form.control}
+   707→                          index={index}
+   708→                          products={products}
+   709→                          productsLoading={productsQuery.isLoading}
+   710→                          onProductChange={handleProductChange}
+   711→                        />
+   712→                      </div>
+   713→
+   714→                      {/* Qty */}
+   715→                      <div className="col-span-4 sm:col-span-2">
+   716→                        <Label className="text-xs text-muted-foreground mb-1 block">Qty</Label>
+   717→                        <FormField
+   718→                          control={form.control}
+   719→                          name={`items.${index}.quantity`}
+   720→                          render={({ field: qtyField }) => (
+   721→                            <FormItem>
+   722→                              <FormControl>
+   723→                                <Input
+   724→                                  type="number"
+   725→                                  min={1}
+   726→                                  className="h-9"
+   727→                                  {...qtyField}
+   728→                                  onChange={(e) => qtyField.onChange(e.target.valueAsNumber || 0)}
+   729→                                />
+   730→                              </FormControl>
+   731→                              <FormMessage />
+   732→                            </FormItem>
+   733→                          )}
+   734→                        />
+   735→                      </div>
+   736→
+   737→                      {/* Cost Price */}
+   738→                      <div className="col-span-4 sm:col-span-3">
+   739→                        <Label className="text-xs text-muted-foreground mb-1 block">Harga Beli</Label>
+   740→                        <FormField
+   741→                          control={form.control}
+   742→                          name={`items.${index}.costPrice`}
+   743→                          render={({ field: priceField }) => (
+   744→                            <FormItem>
+   745→                              <FormControl>
+   746→                                <Input
+   747→                                  type="number"
+   748→                                  min={0}
+   749→                                  className="h-9"
+   750→                                  {...priceField}
+   751→                                  onChange={(e) => priceField.onChange(e.target.valueAsNumber || 0)}
+   752→                                />
+   753→                              </FormControl>
+   754→                              <FormMessage />
+   755→                            </FormItem>
+   756→                          )}
+   757→                        />
+   758→                      </div>
+   759→
+   760→                      {/* Total + Remove */}
+   761→                      <div className="col-span-4 sm:col-span-3 flex items-end gap-2">
+   762→                        <div className="flex-1">
+   763→                          <Label className="text-xs text-muted-foreground mb-1 block">Total</Label>
+   764→                          <div className="h-9 px-3 flex items-center text-sm font-medium rounded-md border bg-muted/50">
+   765→                            {formatRupiah(itemTotal)}
+   766→                          </div>
+   767→                        </div>
+   768→                        {fields.length > 1 && (
+   769→                          <Button
+   770→                            type="button"
+   771→                            variant="ghost"
+   772→                            size="icon"
+   773→                            className="size-9 text-destructive hover:text-destructive hover:bg-red-50 shrink-0"
+   774→                            onClick={() => remove(index)}
+   775→                          >
+   776→                            <Trash2 className="size-4" />
+   777→                          </Button>
+   778→                        )}
+   779→                      </div>
+   780→                    </div>
+   781→                  );
+   782→                })}
+   783→              </div>
+   784→
+   785→              {form.formState.errors.items?.root && (
+   786→                <p className="text-sm text-destructive">{form.formState.errors.items.root.message}</p>
+   787→              )}
+   788→
+   789→              <Separator />
+   790→
+   791→              {/* Grand Total */}
+   792→              <div className="flex items-center justify-between py-2">
+   793→                <span className="font-semibold text-base">Grand Total</span>
+   794→                <span className="font-bold text-lg text-emerald-600">{formatRupiah(grandTotal)}</span>
+   795→              </div>
+   796→            </form>
+   797→          </Form>
+   798→
+   799→          <DialogFooter className="pt-2">
+   800→            <Button variant="outline" onClick={closeAddDialog} disabled={isMutating}>
+   801→              Batal
+   802→            </Button>
+   803→            <Button
+   804→              type="button"
+   805→              onClick={form.handleSubmit(onSubmitForm)}
+   806→              disabled={isMutating}
+   807→              className="bg-emerald-600 hover:bg-emerald-700"
+   808→            >
+   809→              {isMutating && <Loader2 className="size-4 animate-spin" />}
+   810→              {isMutating ? 'Menyimpan...' : 'Simpan Pembelian'}
+   811→            </Button>
+   812→          </DialogFooter>
+   813→        </DialogContent>
+   814→      </Dialog>
+   815→
+   816→      {/* ── Detail Dialog ──────────────────────────────────────────────────── */}
+   817→      <Dialog open={detailOpen} onOpenChange={closeDetail}>
+   818→        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+   819→          <DialogHeader>
+   820→            <DialogTitle>Detail Pembelian</DialogTitle>
+   821→            <DialogDescription>
+   822→              Rincian pembelian {detailData?.invoiceNumber}
+   823→            </DialogDescription>
+   824→          </DialogHeader>
+   825→
+   826→          {detailQuery.isLoading ? (
+   827→            <div className="flex items-center justify-center py-12">
+   828→              <Loader2 className="size-8 animate-spin text-muted-foreground" />
+   829→            </div>
+   830→          ) : detailData ? (
+   831→            <div className="space-y-6">
+   832→              {/* Purchase Info */}
+   833→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   834→                <div className="space-y-1">
+   835→                  <Label className="text-muted-foreground text-xs">No. Invoice</Label>
+   836→                  <p className="font-mono font-medium text-sm">{detailData.invoiceNumber}</p>
+   837→                </div>
+   838→                <div className="space-y-1">
+   839→                  <Label className="text-muted-foreground text-xs">Tanggal</Label>
+   840→                  <p className="text-sm">{formatDate(detailData.createdAt)}</p>
+   841→                </div>
+   842→                <div className="space-y-1">
+   843→                  <Label className="text-muted-foreground text-xs">Supplier</Label>
+   844→                  <p className="text-sm font-medium">{detailData.supplier?.name || '-'}</p>
+   845→                </div>
+   846→                <div className="space-y-1">
+   847→                  <Label className="text-muted-foreground text-xs">Status</Label>
+   848→                  <div className="mt-0.5">{getStatusBadge(detailData.status)}</div>
+   849→                </div>
+   850→                {detailData.notes && (
+   851→                  <div className="space-y-1 sm:col-span-2">
+   852→                    <Label className="text-muted-foreground text-xs">Catatan</Label>
+   853→                    <p className="text-sm">{detailData.notes}</p>
+   854→                  </div>
+   855→                )}
+   856→              </div>
+   857→
+   858→              <Separator />
+   859→
+   860→              {/* Items Table */}
+   861→              <div>
+   862→                <h4 className="font-semibold text-sm mb-3">Item Pembelian</h4>
+   863→                <ScrollArea className="max-h-64">
+   864→                  <Table>
+   865→                    <TableHeader>
+   866→                      <TableRow>
+   867→                        <TableHead className="w-10">No</TableHead>
+   868→                        <TableHead>Produk</TableHead>
+   869→                        <TableHead className="text-right">Qty</TableHead>
+   870→                        <TableHead className="text-right">Harga Beli</TableHead>
+   871→                        <TableHead className="text-right">Total</TableHead>
+   872→                      </TableRow>
+   873→                    </TableHeader>
+   874→                    <TableBody>
+   875→                      {(detailData.items ?? []).length === 0 ? (
+   876→                        <TableRow>
+   877→                          <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+   878→                            Tidak ada item
+   879→                          </TableCell>
+   880→                        </TableRow>
+   881→                      ) : (
+   882→                        (detailData.items ?? []).map((item: PurchaseItem, idx: number) => (
+   883→                          <TableRow key={item.id}>
+   884→                            <TableCell className="text-muted-foreground text-sm">{idx + 1}</TableCell>
+   885→                            <TableCell className="text-sm font-medium">{item.productId}</TableCell>
+   886→                            <TableCell className="text-right text-sm">{item.quantity}</TableCell>
+   887→                            <TableCell className="text-right text-sm">{formatRupiah(item.costPrice)}</TableCell>
+   888→                            <TableCell className="text-right text-sm font-medium">{formatRupiah(item.total)}</TableCell>
+   889→                          </TableRow>
+   890→                        ))
+   891→                      )}
+   892→                    </TableBody>
+   893→                  </Table>
+   894→                </ScrollArea>
+   895→              </div>
+   896→
+   897→              <Separator />
+   898→
+   899→              {/* Grand Total */}
+   900→              <div className="flex items-center justify-between py-1">
+   901→                <span className="font-semibold text-base">Total Pembelian</span>
+   902→                <span className="font-bold text-lg text-emerald-600">{formatRupiah(detailData.totalAmount)}</span>
+   903→              </div>
+   904→            </div>
+   905→          ) : null}
+   906→        </DialogContent>
+   907→      </Dialog>
+   908→    </motion.div>
+   909→  );
+   910→}
+   911→
