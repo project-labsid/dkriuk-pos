@@ -282,11 +282,6 @@ export default function LoginPage() {
             </form>
           </Form>
 
-          {!isSetup && (
-            <p className="text-center text-xs text-muted-foreground">
-              Demo: <span className="font-medium">admin@pos.com</span> / <span className="font-medium">admin123</span>
-            </p>
-          )}
         </div>
       </motion.div>
     </div>

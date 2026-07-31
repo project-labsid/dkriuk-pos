@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { Loader2, Store, Percent, Receipt, Save, Settings } from 'lucide-react';
+import { Loader2, Store, Percent, Receipt, Save, Settings, Trash2, AlertTriangle, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { useAuthStore } from '@/store';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -618,6 +628,145 @@ function ServiceChargeSection() {
   );
 }
 
+// ─── Section: Reset Data ────────────────────────────────────────────────────
+
+function ResetDataSection() {
+  const queryClient = useQueryClient();
+  const { user, logout } = useAuthStore();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/reset', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preserveUserId: user?.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Gagal mereset data');
+      return json;
+    },
+    onSuccess: () => {
+      toast.success('Semua data berhasil direset');
+      queryClient.invalidateQueries();
+      // Log out and redirect to login
+      setTimeout(() => {
+        localStorage.removeItem('pos_user');
+        localStorage.removeItem('pos_remember');
+        logout();
+      }, 1000);
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  const handleReset = () => {
+    if (confirmText !== 'RESET') return;
+    resetMutation.mutate();
+  };
+
+  return (
+    <motion.div {...fadeIn}>
+      <Card className="border-destructive/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <Trash2 className="h-5 w-5" />
+            Reset Semua Data
+          </CardTitle>
+          <CardDescription>
+            Hapus semua data termasuk produk, transaksi, pelanggan, dan pengaturan. Tindakan ini tidak dapat dibatalkan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 mb-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-destructive">Peringatan!</p>
+                <p className="text-sm text-muted-foreground">
+                  Semua data berikut akan dihapus secara permanen:
+                </p>
+                <ul className="mt-2 text-sm text-muted-foreground list-disc list-inside space-y-1">
+                  <li>Semua transaksi dan item transaksi</li>
+                  <li>Semua produk dan kategori</li>
+                  <li>Semua pelanggan dan supplier</li>
+                  <li>Semua pembelian dan penyesuaian stok</li>
+                  <li>Semua cabang (kecuali data pengguna saat ini)</li>
+                  <li>Semua pengaturan toko, pajak, dan service charge</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <Dialog open={confirmOpen} onOpenChange={(open) => {
+            setConfirmOpen(open);
+            if (!open) setConfirmText('');
+          }}>
+            <DialogTrigger asChild>
+              <Button variant="destructive" className="gap-2">
+                <Trash2 className="h-4 w-4" />
+                Reset Semua Data
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="h-5 w-5" />
+                  Konfirmasi Reset Data
+                </DialogTitle>
+                <DialogDescription>
+                  Tindakan ini akan menghapus SEMUA data dari sistem. Akun Anda akan tetap tersimpan sebagai Super Admin, tetapi semua data lainnya akan hilang secara permanen.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <p className="text-sm text-muted-foreground">
+                  Ketik <span className="font-mono font-bold text-destructive">RESET</span> untuk mengkonfirmasi:
+                </p>
+                <Input
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  placeholder="Ketik RESET di sini"
+                  className="font-mono"
+                />
+              </div>
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setConfirmOpen(false);
+                    setConfirmText('');
+                  }}
+                >
+                  Batal
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={confirmText !== 'RESET' || resetMutation.isPending}
+                  onClick={handleReset}
+                >
+                  {resetMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Mereset...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Ya, Reset Semua Data
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -637,6 +786,7 @@ export default function SettingsPage() {
         <StoreInfoSection />
         <TaxSection />
         <ServiceChargeSection />
+        <ResetDataSection />
       </div>
     </div>
   );

@@ -202,26 +202,34 @@ export default function POSPage() {
 
   // ─── Data Fetching ───────────────────────────────────────────────────────
 
-  const { data: categories = [], isLoading: categoriesLoading } = useQuery<Category[]>({
+  const { data: categoriesRaw = [], isLoading: categoriesLoading } = useQuery<Category[]>({
     queryKey: ['categories'],
     queryFn: async () => {
       const res = await fetch('/api/categories');
+      if (!res.ok) return [];
       const json = await res.json();
-      return json.data ?? [];
+      const data = json.data;
+      return Array.isArray(data) ? data : [];
     },
   });
 
-  const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
+  const categories = Array.isArray(categoriesRaw) ? categoriesRaw : [];
+
+  const { data: productsRaw = [], isLoading: productsLoading } = useQuery<Product[]>({
     queryKey: ['pos-products', searchQuery, selectedCategory],
     queryFn: async () => {
       const params = new URLSearchParams({ isActive: 'true', perPage: '200' });
       if (searchQuery) params.set('search', searchQuery);
       if (selectedCategory !== 'all') params.set('categoryId', selectedCategory);
       const res = await fetch(`/api/products?${params.toString()}`);
+      if (!res.ok) return [];
       const json = await res.json();
-      return (json.data ?? []) as Product[];
+      const data = json.data;
+      return Array.isArray(data) ? data : [];
     },
   });
+
+  const products = Array.isArray(productsRaw) ? productsRaw : [];
 
   const { data: taxData } = useQuery({
     queryKey: ['tax-setting'],
@@ -241,25 +249,33 @@ export default function POSPage() {
     },
   });
 
-  const { data: customers = [] } = useQuery<Customer[]>({
+  const { data: customersRaw = [] } = useQuery<Customer[]>({
     queryKey: ['customers-short'],
     queryFn: async () => {
       const res = await fetch('/api/customers?perPage=100');
+      if (!res.ok) return [];
       const json = await res.json();
-      return (json.data ?? []) as Customer[];
+      const data = json.data;
+      return Array.isArray(data) ? data : [];
     },
   });
 
-  const { data: heldTransactions = [], refetch: refetchHeld } = useQuery<Transaction[]>({
+  const customers = Array.isArray(customersRaw) ? customersRaw : [];
+
+  const { data: heldTransactionsRaw = [], refetch: refetchHeld } = useQuery<Transaction[]>({
     queryKey: ['held-transactions', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
       const res = await fetch(`/api/transactions/held?userId=${user.id}`);
+      if (!res.ok) return [];
       const json = await res.json();
-      return (json.data ?? []) as Transaction[];
+      const data = json.data;
+      return Array.isArray(data) ? data : [];
     },
     enabled: !!user?.id,
   });
+
+  const heldTransactions = Array.isArray(heldTransactionsRaw) ? heldTransactionsRaw : [];
 
   // Sync tax & SC config from server
   useEffect(() => {
