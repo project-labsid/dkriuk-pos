@@ -1,0 +1,1558 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import { useQuery } from '@tanstack/react-query';
+     6→import {
+     7→  BarChart as BarChartIcon,
+     8→  TrendingUp,
+     9→  Users,
+    10→  Package,
+    11→  Loader2,
+    12→  CalendarDays,
+    13→  DollarSign,
+    14→  ShoppingCart,
+    15→  Target,
+    16→  Activity,
+    17→  Download,
+    18→  Printer,
+    19→  FileText,
+    20→} from 'lucide-react';
+    21→import { cn } from '@/lib/utils';
+    22→import { exportToExcel, printReport, printThermal } from '@/lib/report-export';
+    23→
+    24→import { Button } from '@/components/ui/button';
+    25→import { Input } from '@/components/ui/input';
+    26→import { Badge } from '@/components/ui/badge';
+    27→import { Skeleton } from '@/components/ui/skeleton';
+    28→import { Label } from '@/components/ui/label';
+    29→import {
+    30→  Card,
+    31→  CardContent,
+    32→  CardDescription,
+    33→  CardHeader,
+    34→  CardTitle,
+    35→} from '@/components/ui/card';
+    36→import {
+    37→  Table,
+    38→  TableHeader,
+    39→  TableBody,
+    40→  TableHead,
+    41→  TableRow,
+    42→  TableCell,
+    43→} from '@/components/ui/table';
+    44→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    45→import {
+    46→  ChartContainer,
+    47→  ChartTooltip,
+    48→  ChartTooltipContent,
+    49→  ChartLegend,
+    50→  ChartLegendContent,
+    51→  type ChartConfig,
+    52→} from '@/components/ui/chart';
+    53→import {
+    54→  LineChart,
+    55→  Line,
+    56→  XAxis,
+    57→  YAxis,
+    58→  CartesianGrid,
+    59→  Bar,
+    60→  BarChart,
+    61→  AreaChart,
+    62→  Area,
+    63→  ResponsiveContainer,
+    64→} from 'recharts';
+    65→
+    66→// ─── Helpers ──────────────────────────────────────────────────────────────────
+    67→
+    68→function formatRupiah(amount: number): string {
+    69→  return new Intl.NumberFormat('id-ID', {
+    70→    style: 'currency',
+    71→    currency: 'IDR',
+    72→    minimumFractionDigits: 0,
+    73→    maximumFractionDigits: 0,
+    74→  }).format(amount);
+    75→}
+    76→
+    77→function formatDate(dateStr: string): string {
+    78→  return new Date(dateStr).toLocaleDateString('id-ID', {
+    79→    day: '2-digit',
+    80→    month: 'short',
+    81→    year: 'numeric',
+    82→  });
+    83→}
+    84→
+    85→function getDefaultDates() {
+    86→  const now = new Date();
+    87→  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    88→  return {
+    89→    start: firstDay.toISOString().split('T')[0],
+    90→    end: now.toISOString().split('T')[0],
+    91→  };
+    92→}
+    93→
+    94→// ─── Date Range Filter ────────────────────────────────────────────────────────
+    95→
+    96→function DateRangeFilter({
+    97→  startDate,
+    98→  endDate,
+    99→  onStartChange,
+   100→  onEndChange,
+   101→}: {
+   102→  startDate: string;
+   103→  endDate: string;
+   104→  onStartChange: (v: string) => void;
+   105→  onEndChange: (v: string) => void;
+   106→}) {
+   107→  const defaults = getDefaultDates();
+   108→
+   109→  return (
+   110→    <div className="flex flex-wrap items-end gap-3">
+   111→      <div className="w-full sm:w-auto">
+   112→        <Label className="text-xs text-muted-foreground">Tanggal Mulai</Label>
+   113→        <div className="relative mt-1">
+   114→          <CalendarDays className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   115→          <Input
+   116→            type="date"
+   117→            value={startDate}
+   118→        onChange={(e) => onStartChange(e.target.value)}
+   119→        className="pl-9"
+   120→      />
+   121→    </div>
+   122→  </div>
+   123→  <div className="w-full sm:w-auto">
+   124→    <Label className="text-xs text-muted-foreground">Tanggal Akhir</Label>
+   125→    <div className="relative mt-1">
+   126→      <CalendarDays className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   127→      <Input
+   128→        type="date"
+   129→        value={endDate}
+   130→        onChange={(e) => onEndChange(e.target.value)}
+   131→        className="pl-9"
+   132→      />
+   133→    </div>
+   134→  </div>
+   135→  <Button
+   136→    size="sm"
+   137→    variant="outline"
+   138→    onClick={() => {
+   139→      const today = new Date().toISOString().split('T')[0];
+   140→      onStartChange(today);
+   141→      onEndChange(today);
+   142→    }}
+   143→  >
+   144→    Hari Ini
+   145→  </Button>
+   146→  <Button
+   147→    size="sm"
+   148→    variant="outline"
+   149→    onClick={() => {
+   150→      onStartChange(defaults.start);
+   151→      onEndChange(defaults.end);
+   152→    }}
+   153→  >
+   154→    Bulan Ini
+   155→  </Button>
+   156→</div>
+   157→  );
+   158→}
+   159→
+   160→// ─── Chart Configs ─────────────────────────────────────────────────────────────
+   161→
+   162→const salesChartConfig = {
+   163→  pendapatan: { label: 'Pendapatan', color: 'hsl(var(--chart-1))' },
+   164→} satisfies ChartConfig;
+   165→
+   166→const bestSellingChartConfig = {
+   167→  terjual: { label: 'Qty Terjual', color: 'hsl(var(--chart-2))' },
+   168→} satisfies ChartConfig;
+   169→
+   170→const profitLossChartConfig = {
+   171→  laba: { label: 'Laba', color: 'hsl(var(--chart-1))' },
+   172→  hpp: { label: 'HPP', color: 'hsl(var(--chart-3))' },
+   173→} satisfies ChartConfig;
+   174→
+   175→const dailyTrafficChartConfig = {
+   176→  transaksi: { label: 'Transaksi', color: 'hsl(var(--chart-1))' },
+   177→} satisfies ChartConfig;
+   178→
+   179→const monthlyTrafficChartConfig = {
+   180→  transaksi: { label: 'Transaksi', color: 'hsl(var(--chart-2))' },
+   181→  pendapatan: { label: 'Pendapatan', color: 'hsl(var(--chart-1))' },
+   182→} satisfies ChartConfig;
+   183→
+   184→// ─── Shared Export Buttons ───────────────────────────────────────────────────
+   185→
+   186→function ExportButtons({ onExcel, onPrintA4, onPrintThermal }: {
+   187→  onExcel: () => void;
+   188→  onPrintA4: () => void;
+   189→  onPrintThermal: () => void;
+   190→}) {
+   191→  return (
+   192→    <div className="flex items-center gap-2">
+   193→      <Button variant="outline" size="sm" onClick={onExcel}>
+   194→        <Download className="mr-1.5 h-4 w-4" />
+   195→        Download Excel
+   196→      </Button>
+   197→      <Button variant="outline" size="sm" onClick={onPrintA4}>
+   198→        <Printer className="mr-1.5 h-4 w-4" />
+   199→        Print A4
+   200→      </Button>
+   201→      <Button variant="outline" size="sm" onClick={onPrintThermal}>
+   202→        <FileText className="mr-1.5 h-4 w-4" />
+   203→        Print Thermal
+   204→      </Button>
+   205→    </div>
+   206→  );
+   207→}
+   208→
+   209→const STORE_NAME = 'POS Toko';
+   210→
+   211→// ─── Penjualan Tab ─────────────────────────────────────────────────────────────
+   212→
+   213→function PenjualanTab() {
+   214→  const defaults = getDefaultDates();
+   215→  const [startDate, setStartDate] = useState(defaults.start);
+   216→  const [endDate, setEndDate] = useState(defaults.end);
+   217→
+   218→  const { data, isLoading, isError } = useQuery({
+   219→    queryKey: ['report-daily', startDate, endDate],
+   220→    queryFn: async () => {
+   221→      const params = new URLSearchParams({ type: 'daily' });
+   222→      if (startDate) params.set('startDate', startDate);
+   223→      if (endDate) params.set('endDate', endDate);
+   224→      const res = await fetch(`/api/reports?${params}`);
+   225→      if (!res.ok) throw new Error('Gagal memuat laporan');
+   226→      const json = await res.json();
+   227→      return json.data;
+   228→    },
+   229→  });
+   230→
+   231→  // Group transactions by date for chart & table
+   232→  const dailyData = useMemo(() => {
+   233→    if (!data?.transactions) return [];
+   234→    const grouped: Record<string, { date: string; transactions: number; revenue: number }> = {};
+   235→    for (const tx of data.transactions) {
+   236→      const day = new Date(tx.createdAt).toISOString().split('T')[0];
+   237→      if (!grouped[day]) grouped[day] = { date: day, transactions: 0, revenue: 0 };
+   238→      grouped[day].transactions += 1;
+   239→      grouped[day].revenue += tx.grandTotal;
+   240→    }
+   241→    return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
+   242→  }, [data]);
+   243→
+   244→  const summary = data?.summary;
+   245→  const avgPerTransaction = summary ? (summary.totalSales / (summary.totalTransactions || 1)) : 0;
+   246→
+   247→  const getExportData = useCallback(() => {
+   248→    const columns = ['Tanggal', 'Jumlah Transaksi', 'Total Pendapatan'];
+   249→    const rows = dailyData.map((d) => [
+   250→      formatDate(d.date),
+   251→      d.transactions,
+   252→      formatRupiah(d.revenue),
+   253→    ]);
+   254→    const summaryObj = summary
+   255→      ? {
+   256→          'Total Transaksi': String(summary.totalTransactions ?? 0),
+   257→          'Total Pendapatan': formatRupiah(summary.totalSales ?? 0),
+   258→          'Rata-rata / Transaksi': formatRupiah(avgPerTransaction),
+   259→        }
+   260→      : undefined;
+   261→    return { title: 'Laporan Penjualan', subtitle: `${formatDate(startDate)} – ${formatDate(endDate)}`, columns, rows, summary: summaryObj };
+   262→  }, [dailyData, summary, avgPerTransaction, startDate, endDate]);
+   263→
+   264→  const handleExcel = useCallback(() => {
+   265→    const { title, columns, rows } = getExportData();
+   266→    exportToExcel({ sheetName: title, columns, rows });
+   267→  }, [getExportData]);
+   268→
+   269→  const handlePrintA4 = useCallback(() => {
+   270→    const { title, subtitle, columns, rows, summary } = getExportData();
+   271→    printReport({ title, subtitle, columns, rows, summary });
+   272→  }, [getExportData]);
+   273→
+   274→  const handlePrintThermal = useCallback(() => {
+   275→    const { title, columns, rows, summary } = getExportData();
+   276→    printThermal({ storeName: STORE_NAME, title, columns, rows, summary });
+   277→  }, [getExportData]);
+   278→
+   279→  return (
+   280→    <div className="space-y-4">
+   281→      <Card>
+   282→        <CardContent className="p-4">
+   283→          <DateRangeFilter
+   284→            startDate={startDate}
+   285→            endDate={endDate}
+   286→            onStartChange={setStartDate}
+   287→            onEndChange={setEndDate}
+   288→          />
+   289→        </CardContent>
+   290→      </Card>
+   291→
+   292→      <ExportButtons onExcel={handleExcel} onPrintA4={handlePrintA4} onPrintThermal={handlePrintThermal} />
+   293→
+   294→      {/* Summary Cards */}
+   295→      <div className="grid gap-4 sm:grid-cols-3">
+   296→        <Card>
+   297→          <CardContent className="p-4">
+   298→            <div className="flex items-center gap-3">
+   299→              <div className="rounded-lg bg-primary/10 p-2.5">
+   300→                <ShoppingCart className="h-5 w-5 text-primary" />
+   301→              </div>
+   302→              <div>
+   303→                <p className="text-sm text-muted-foreground">Total Transaksi</p>
+   304→                {isLoading ? (
+   305→                  <Skeleton className="h-6 w-16" />
+   306→                ) : (
+   307→                  <p className="text-2xl font-bold">
+   308→                    {summary?.totalTransactions ?? 0}
+   309→                  </p>
+   310→                )}
+   311→              </div>
+   312→            </div>
+   313→          </CardContent>
+   314→        </Card>
+   315→        <Card>
+   316→          <CardContent className="p-4">
+   317→            <div className="flex items-center gap-3">
+   318→              <div className="rounded-lg bg-emerald-500/10 p-2.5">
+   319→                <DollarSign className="h-5 w-5 text-emerald-600" />
+   320→              </div>
+   321→              <div>
+   322→                <p className="text-sm text-muted-foreground">Total Pendapatan</p>
+   323→                {isLoading ? (
+   324→                  <Skeleton className="h-6 w-28" />
+   325→                ) : (
+   326→                  <p className="text-2xl font-bold">
+   327→                    {formatRupiah(summary?.totalSales ?? 0)}
+   328→                  </p>
+   329→                )}
+   330→              </div>
+   331→            </div>
+   332→          </CardContent>
+   333→        </Card>
+   334→        <Card>
+   335→          <CardContent className="p-4">
+   336→            <div className="flex items-center gap-3">
+   337→              <div className="rounded-lg bg-amber-500/10 p-2.5">
+   338→                <Target className="h-5 w-5 text-amber-600" />
+   339→              </div>
+   340→              <div>
+   341→                <p className="text-sm text-muted-foreground">Rata-rata / Transaksi</p>
+   342→                {isLoading ? (
+   343→                  <Skeleton className="h-6 w-24" />
+   344→                ) : (
+   345→                  <p className="text-2xl font-bold">
+   346→                    {formatRupiah(avgPerTransaction)}
+   347→                  </p>
+   348→                )}
+   349→              </div>
+   350→            </div>
+   351→          </CardContent>
+   352→        </Card>
+   353→      </div>
+   354→
+   355→      {/* Line Chart */}
+   356→      <Card>
+   357→        <CardHeader className="pb-2">
+   358→          <CardTitle className="text-base">Grafik Pendapatan Harian</CardTitle>
+   359→        </CardHeader>
+   360→        <CardContent>
+   361→          {isLoading ? (
+   362→            <Skeleton className="h-[300px] w-full" />
+   363→          ) : !dailyData.length ? (
+   364→            <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+   365→              {isError ? 'Gagal memuat data' : 'Tidak ada data penjualan'}
+   366→            </div>
+   367→          ) : (
+   368→            <ChartContainer config={salesChartConfig} className="h-[300px] w-full">
+   369→              <LineChart data={dailyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+   370→                <CartesianGrid strokeDasharray="3 3" />
+   371→                <XAxis
+   372→                  dataKey="date"
+   373→                  tickFormatter={(v) => {
+   374→                    const d = new Date(v);
+   375→                    return `${d.getDate()}/${d.getMonth() + 1}`;
+   376→                  }}
+   377→                  fontSize={12}
+   378→                />
+   379→                <YAxis fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}rb`} />
+   380→                <ChartTooltip
+   381→                  content={
+   382→                    <ChartTooltipContent
+   383→                      formatter={(value) => formatRupiah(value as number)}
+   384→                      labelFormatter={(label) => formatDate(label as string)}
+   385→                    />
+   386→                  }
+   387→                />
+   388→                <Line
+   389→                  type="monotone"
+   390→                  dataKey="revenue"
+   391→                  stroke="var(--color-pendapatan)"
+   392→                  strokeWidth={2}
+   393→                  dot={{ r: 4 }}
+   394→                  activeDot={{ r: 6 }}
+   395→                />
+   396→              </LineChart>
+   397→            </ChartContainer>
+   398→          )}
+   399→        </CardContent>
+   400→      </Card>
+   401→
+   402→      {/* Daily Table */}
+   403→      <Card>
+   404→        <CardHeader className="pb-2">
+   405→          <CardTitle className="text-base">Rincian Harian</CardTitle>
+   406→        </CardHeader>
+   407→        <CardContent className="p-0">
+   408→          <div className="max-h-96 overflow-y-auto">
+   409→            <Table>
+   410→              <TableHeader>
+   411→                <TableRow className="sticky top-0 bg-background z-10">
+   412→                  <TableHead>Tanggal</TableHead>
+   413→                  <TableHead className="text-right">Jumlah Transaksi</TableHead>
+   414→                  <TableHead className="text-right">Total Pendapatan</TableHead>
+   415→                </TableRow>
+   416→              </TableHeader>
+   417→              <TableBody>
+   418→                {isLoading ? (
+   419→                  Array.from({ length: 5 }).map((_, i) => (
+   420→                    <TableRow key={i}>
+   421→                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+   422→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+   423→                      <TableCell><Skeleton className="h-4 w-28 ml-auto" /></TableCell>
+   424→                    </TableRow>
+   425→                  ))
+   426→                ) : !dailyData.length ? (
+   427→                  <TableRow>
+   428→                    <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+   429→                      Tidak ada data
+   430→                    </TableCell>
+   431→                  </TableRow>
+   432→                ) : (
+   433→                  dailyData.map((row) => (
+   434→                    <TableRow key={row.date}>
+   435→                      <TableCell>{formatDate(row.date)}</TableCell>
+   436→                      <TableCell className="text-right font-mono">{row.transactions}</TableCell>
+   437→                      <TableCell className="text-right font-mono">{formatRupiah(row.revenue)}</TableCell>
+   438→                    </TableRow>
+   439→                  ))
+   440→                )}
+   441→              </TableBody>
+   442→            </Table>
+   443→          </div>
+   444→        </CardContent>
+   445→      </Card>
+   446→    </div>
+   447→  );
+   448→}
+   449→
+   450→// ─── Produk Terlaris Tab ──────────────────────────────────────────────────────
+   451→
+   452→function ProdukTerlarisTab() {
+   453→  const defaults = getDefaultDates();
+   454→  const [startDate, setStartDate] = useState(defaults.start);
+   455→  const [endDate, setEndDate] = useState(defaults.end);
+   456→
+   457→  const { data, isLoading, isError } = useQuery({
+   458→    queryKey: ['report-best-selling', startDate, endDate],
+   459→    queryFn: async () => {
+   460→      const params = new URLSearchParams({ type: 'best_selling' });
+   461→      if (startDate) params.set('startDate', startDate);
+   462→      if (endDate) params.set('endDate', endDate);
+   463→      const res = await fetch(`/api/reports?${params}`);
+   464→      if (!res.ok) throw new Error('Gagal memuat data');
+   465→      const json = await res.json();
+   466→      return json.data;
+   467→    },
+   468→  });
+   469→
+   470→  const top10 = useMemo(() => {
+   471→    if (!data?.topProducts) return [];
+   472→    return data.topProducts.slice(0, 10);
+   473→  }, [data]);
+   474→
+   475→  const chartData = useMemo(() => {
+   476→    return [...top10].reverse().map((p) => ({
+   477→      name: p.productName.length > 20 ? p.productName.slice(0, 20) + '...' : p.productName,
+   478→      fullName: p.productName,
+   479→      terjual: p.totalQuantity,
+   480→      revenue: p.totalRevenue,
+   481→    }));
+   482→  }, [top10]);
+   483→
+   484→  const getExportData = useCallback(() => {
+   485→    const columns = ['Peringkat', 'Nama Produk', 'Qty Terjual', 'Pendapatan'];
+   486→    const rows = top10.map((p, idx) => [
+   487→      `#${idx + 1}`,
+   488→      p.productName,
+   489→      p.totalQuantity,
+   490→      formatRupiah(p.totalRevenue),
+   491→    ]);
+   492→    return { title: 'Produk Terlaris', subtitle: `${formatDate(startDate)} – ${formatDate(endDate)}`, columns, rows };
+   493→  }, [top10, startDate, endDate]);
+   494→
+   495→  const handleExcel = useCallback(() => {
+   496→    const { title, columns, rows } = getExportData();
+   497→    exportToExcel({ sheetName: title, columns, rows });
+   498→  }, [getExportData]);
+   499→
+   500→  const handlePrintA4 = useCallback(() => {
+   501→    const { title, subtitle, columns, rows } = getExportData();
+   502→    printReport({ title, subtitle, columns, rows });
+   503→  }, [getExportData]);
+   504→
+   505→  const handlePrintThermal = useCallback(() => {
+   506→    const { title, columns, rows } = getExportData();
+   507→    printThermal({ storeName: STORE_NAME, title, columns, rows });
+   508→  }, [getExportData]);
+   509→
+   510→  return (
+   511→    <div className="space-y-4">
+   512→      <Card>
+   513→        <CardContent className="p-4">
+   514→          <DateRangeFilter
+   515→            startDate={startDate}
+   516→            endDate={endDate}
+   517→            onStartChange={setStartDate}
+   518→            onEndChange={setEndDate}
+   519→          />
+   520→        </CardContent>
+   521→      </Card>
+   522→
+   523→      <ExportButtons onExcel={handleExcel} onPrintA4={handlePrintA4} onPrintThermal={handlePrintThermal} />
+   524→
+   525→      {/* Horizontal Bar Chart */}
+   526→      <Card>
+   527→        <CardHeader className="pb-2">
+   528→          <CardTitle className="text-base">Top 10 Produk Terlaris</CardTitle>
+   529→          <CardDescription>Berdasarkan jumlah terjual</CardDescription>
+   530→        </CardHeader>
+   531→        <CardContent>
+   532→          {isLoading ? (
+   533→            <Skeleton className="h-[400px] w-full" />
+   534→          ) : !top10.length ? (
+   535→            <div className="flex h-[400px] items-center justify-center text-muted-foreground">
+   536→              {isError ? 'Gagal memuat data' : 'Tidak ada data penjualan'}
+   537→            </div>
+   538→          ) : (
+   539→            <ChartContainer config={bestSellingChartConfig} className="h-[400px] w-full">
+   540→              <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+   541→                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+   542→                <XAxis type="number" fontSize={12} />
+   543→                <YAxis
+   544→                  type="category"
+   545→                  dataKey="name"
+   546→                  width={140}
+   547→                  fontSize={11}
+   548→                  tickLine={false}
+   549→                />
+   550→                <ChartTooltip
+   551→                  content={
+   552→                    <ChartTooltipContent
+   553→                      formatter={(value, _name, item) => {
+   554→                        const payload = item.payload as { fullName?: string; terjual?: number; revenue?: number };
+   555→                        return `${payload.terjual?.toLocaleString()} unit · ${formatRupiah(payload.revenue ?? 0)}`;
+   556→                      }}
+   557→                      labelFormatter={(_label, payload) => {
+   558→                        const item = payload?.[0]?.payload as { fullName?: string };
+   559→                        return item?.fullName || '';
+   560→                      }}
+   561→                    />
+   562→                  }
+   563→                />
+   564→                <Bar
+   565→                  dataKey="terjual"
+   566→                  fill="var(--color-terjual)"
+   567→                  radius={[0, 4, 4, 0]}
+   568→                />
+   569→              </BarChart>
+   570→            </ChartContainer>
+   571→          )}
+   572→        </CardContent>
+   573→      </Card>
+   574→
+   575→      {/* Table */}
+   576→      <Card>
+   577→        <CardHeader className="pb-2">
+   578→          <CardTitle className="text-base">Detail Produk Terlaris</CardTitle>
+   579→        </CardHeader>
+   580→        <CardContent className="p-0">
+   581→          <div className="max-h-96 overflow-y-auto">
+   582→            <Table>
+   583→              <TableHeader>
+   584→                <TableRow className="sticky top-0 bg-background z-10">
+   585→                  <TableHead className="w-12">Peringkat</TableHead>
+   586→                  <TableHead>Nama Produk</TableHead>
+   587→                  <TableHead className="text-right">Qty Terjual</TableHead>
+   588→                  <TableHead className="text-right">Pendapatan</TableHead>
+   589→                </TableRow>
+   590→              </TableHeader>
+   591→              <TableBody>
+   592→                {isLoading ? (
+   593→                  Array.from({ length: 5 }).map((_, i) => (
+   594→                    <TableRow key={i}>
+   595→                      <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+   596→                      <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+   597→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+   598→                      <TableCell><Skeleton className="h-4 w-28 ml-auto" /></TableCell>
+   599→                    </TableRow>
+   600→                  ))
+   601→                ) : !top10.length ? (
+   602→                  <TableRow>
+   603→                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+   604→                      Tidak ada data
+   605→                    </TableCell>
+   606→                  </TableRow>
+   607→                ) : (
+   608→                  top10.map((p, idx) => (
+   609→                    <TableRow key={p.productId}>
+   610→                      <TableCell>
+   611→                        <Badge variant={idx < 3 ? 'default' : 'secondary'} className="font-mono">
+   612→                          #{idx + 1}
+   613→                        </Badge>
+   614→                      </TableCell>
+   615→                      <TableCell className="font-medium">{p.productName}</TableCell>
+   616→                      <TableCell className="text-right font-mono">{p.totalQuantity}</TableCell>
+   617→                      <TableCell className="text-right font-mono">{formatRupiah(p.totalRevenue)}</TableCell>
+   618→                    </TableRow>
+   619→                  ))
+   620→                )}
+   621→              </TableBody>
+   622→            </Table>
+   623→          </div>
+   624→        </CardContent>
+   625→      </Card>
+   626→    </div>
+   627→  );
+   628→}
+   629→
+   630→// ─── Laba Rugi Tab ─────────────────────────────────────────────────────────────
+   631→
+   632→function LabaRugiTab() {
+   633→  const defaults = getDefaultDates();
+   634→  const [startDate, setStartDate] = useState(defaults.start);
+   635→  const [endDate, setEndDate] = useState(defaults.end);
+   636→
+   637→  const { data, isLoading, isError } = useQuery({
+   638→    queryKey: ['report-profit-loss', startDate, endDate],
+   639→    queryFn: async () => {
+   640→      const params = new URLSearchParams({ type: 'profit_loss' });
+   641→      if (startDate) params.set('startDate', startDate);
+   642→      if (endDate) params.set('endDate', endDate);
+   643→      const res = await fetch(`/api/reports?${params}`);
+   644→      if (!res.ok) throw new Error('Gagal memuat data');
+   645→      const json = await res.json();
+   646→      return json.data;
+   647→    },
+   648→  });
+   649→
+   650→  // Also fetch daily data for chart
+   651→  const { data: dailyData } = useQuery({
+   652→    queryKey: ['report-daily-pl', startDate, endDate],
+   653→    queryFn: async () => {
+   654→      const params = new URLSearchParams({ type: 'daily' });
+   655→      if (startDate) params.set('startDate', startDate);
+   656→      if (endDate) params.set('endDate', endDate);
+   657→      const res = await fetch(`/api/reports?${params}`);
+   658→      if (!res.ok) return null;
+   659→      const json = await res.json();
+   660→      return json.data;
+   661→    },
+   662→  });
+   663→
+   664→  const chartDailyData = useMemo(() => {
+   665→    if (!dailyData?.transactions) return [];
+   666→    const grouped: Record<string, { date: string; laba: number; hpp: number }> = {};
+   667→    for (const tx of dailyData.transactions) {
+   668→      const day = new Date(tx.createdAt).toISOString().split('T')[0];
+   669→      if (!grouped[day]) grouped[day] = { date: day, laba: 0, hpp: 0 };
+   670→      const cost = tx.items?.reduce((s: number, item: { costPrice: number; quantity: number }) => s + item.costPrice * item.quantity, 0) ?? 0;
+   671→      grouped[day].laba += tx.grandTotal - cost;
+   672→      grouped[day].hpp += cost;
+   673→    }
+   674→    return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
+   675→  }, [dailyData]);
+   676→
+   677→  const margin = data?.revenue ? ((data.grossProfit / data.revenue) * 100) : 0;
+   678→
+   679→  const getExportData = useCallback(() => {
+   680→    const columns = ['Tanggal', 'Laba', 'HPP'];
+   681→    const rows = chartDailyData.map((d) => [
+   682→      formatDate(d.date),
+   683→      formatRupiah(d.laba),
+   684→      formatRupiah(d.hpp),
+   685→    ]);
+   686→    const summaryObj = data
+   687→      ? {
+   688→          'Total Pendapatan': formatRupiah(data.revenue ?? 0),
+   689→          'Total HPP': formatRupiah(data.costOfGoodsSold ?? 0),
+   690→          'Laba Kotor': formatRupiah(data.grossProfit ?? 0),
+   691→          'Margin': `${margin.toFixed(1)}%`,
+   692→        }
+   693→      : undefined;
+   694→    return { title: 'Laporan Laba Rugi', subtitle: `${formatDate(startDate)} – ${formatDate(endDate)}`, columns, rows, summary: summaryObj };
+   695→  }, [chartDailyData, data, margin, startDate, endDate]);
+   696→
+   697→  const handleExcel = useCallback(() => {
+   698→    const { title, columns, rows } = getExportData();
+   699→    exportToExcel({ sheetName: title, columns, rows });
+   700→  }, [getExportData]);
+   701→
+   702→  const handlePrintA4 = useCallback(() => {
+   703→    const { title, subtitle, columns, rows, summary } = getExportData();
+   704→    printReport({ title, subtitle, columns, rows, summary });
+   705→  }, [getExportData]);
+   706→
+   707→  const handlePrintThermal = useCallback(() => {
+   708→    const { title, columns, rows, summary } = getExportData();
+   709→    printThermal({ storeName: STORE_NAME, title, columns, rows, summary });
+   710→  }, [getExportData]);
+   711→
+   712→  return (
+   713→    <div className="space-y-4">
+   714→      <Card>
+   715→        <CardContent className="p-4">
+   716→          <DateRangeFilter
+   717→            startDate={startDate}
+   718→            endDate={endDate}
+   719→            onStartChange={setStartDate}
+   720→            onEndChange={setEndDate}
+   721→          />
+   722→        </CardContent>
+   723→      </Card>
+   724→
+   725→      <ExportButtons onExcel={handleExcel} onPrintA4={handlePrintA4} onPrintThermal={handlePrintThermal} />
+   726→
+   727→      {/* Summary */}
+   728→      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   729→        <Card>
+   730→          <CardContent className="p-4">
+   731→            <p className="text-sm text-muted-foreground">Total Pendapatan</p>
+   732→            {isLoading ? (
+   733→              <Skeleton className="mt-1 h-6 w-28" />
+   734→            ) : (
+   735→              <p className="mt-1 text-2xl font-bold text-emerald-600">{formatRupiah(data?.revenue ?? 0)}</p>
+   736→            )}
+   737→          </CardContent>
+   738→        </Card>
+   739→        <Card>
+   740→          <CardContent className="p-4">
+   741→            <p className="text-sm text-muted-foreground">Total HPP</p>
+   742→            {isLoading ? (
+   743→              <Skeleton className="mt-1 h-6 w-28" />
+   744→            ) : (
+   745→              <p className="mt-1 text-2xl font-bold text-red-600">{formatRupiah(data?.costOfGoodsSold ?? 0)}</p>
+   746→            )}
+   747→          </CardContent>
+   748→        </Card>
+   749→        <Card>
+   750→          <CardContent className="p-4">
+   751→            <p className="text-sm text-muted-foreground">Laba Kotor</p>
+   752→            {isLoading ? (
+   753→              <Skeleton className="mt-1 h-6 w-28" />
+   754→            ) : (
+   755→              <p className={cn(
+   756→                'mt-1 text-2xl font-bold',
+   757→                (data?.grossProfit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'
+   758→              )}>
+   759→                {formatRupiah(data?.grossProfit ?? 0)}
+   760→              </p>
+   761→            )}
+   762→          </CardContent>
+   763→        </Card>
+   764→        <Card>
+   765→          <CardContent className="p-4">
+   766→            <p className="text-sm text-muted-foreground">Margin</p>
+   767→            {isLoading ? (
+   768→              <Skeleton className="mt-1 h-6 w-16" />
+   769→            ) : (
+   770→              <p className={cn(
+   771→                'mt-1 text-2xl font-bold',
+   772→                margin >= 0 ? 'text-emerald-600' : 'text-red-600'
+   773→              )}>
+   774→                {margin.toFixed(1)}%
+   775→              </p>
+   776→            )}
+   777→          </CardContent>
+   778→        </Card>
+   779→      </div>
+   780→
+   781→      {/* Bar Chart: Profit vs Cost */}
+   782→      <Card>
+   783→        <CardHeader className="pb-2">
+   784→          <CardTitle className="text-base">Grafik Laba vs HPP Harian</CardTitle>
+   785→        </CardHeader>
+   786→        <CardContent>
+   787→          {isLoading ? (
+   788→            <Skeleton className="h-[300px] w-full" />
+   789→          ) : !chartDailyData.length ? (
+   790→            <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+   791→              {isError ? 'Gagal memuat data' : 'Tidak ada data'}
+   792→            </div>
+   793→          ) : (
+   794→            <ChartContainer config={profitLossChartConfig} className="h-[300px] w-full">
+   795→              <BarChart data={chartDailyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+   796→                <CartesianGrid strokeDasharray="3 3" />
+   797→                <XAxis
+   798→                  dataKey="date"
+   799→                  tickFormatter={(v) => {
+   800→                    const d = new Date(v);
+   801→                    return `${d.getDate()}/${d.getMonth() + 1}`;
+   802→                  }}
+   803→                  fontSize={12}
+   804→                />
+   805→                <YAxis fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}rb`} />
+   806→                <ChartTooltip
+   807→                  content={
+   808→                    <ChartTooltipContent
+   809→                      formatter={(value) => formatRupiah(value as number)}
+   810→                      labelFormatter={(label) => formatDate(label as string)}
+   811→                    />
+   812→                  }
+   813→                />
+   814→                <ChartLegend content={<ChartLegendContent />} />
+   815→                <Bar dataKey="laba" fill="var(--color-laba)" radius={[4, 4, 0, 0]} />
+   816→                <Bar dataKey="hpp" fill="var(--color-hpp)" radius={[4, 4, 0, 0]} />
+   817→              </BarChart>
+   818→            </ChartContainer>
+   819→          )}
+   820→        </CardContent>
+   821→      </Card>
+   822→    </div>
+   823→  );
+   824→}
+   825→
+   826→// ─── Pelanggan Tab ─────────────────────────────────────────────────────────────
+   827→
+   828→function PelangganTab() {
+   829→  const defaults = getDefaultDates();
+   830→  const [startDate, setStartDate] = useState(defaults.start);
+   831→  const [endDate, setEndDate] = useState(defaults.end);
+   832→
+   833→  const { data, isLoading, isError } = useQuery({
+   834→    queryKey: ['report-customer', startDate, endDate],
+   835→    queryFn: async () => {
+   836→      const params = new URLSearchParams({ type: 'customer' });
+   837→      if (startDate) params.set('startDate', startDate);
+   838→      if (endDate) params.set('endDate', endDate);
+   839→      const res = await fetch(`/api/reports?${params}`);
+   840→      if (!res.ok) throw new Error('Gagal memuat data');
+   841→      const json = await res.json();
+   842→      return json.data;
+   843→    },
+   844→  });
+   845→
+   846→  // Also fetch all customers to get member points
+   847→  const { data: allCustomers } = useQuery({
+   848→    queryKey: ['customers-list'],
+   849→    queryFn: async () => {
+   850→      const res = await fetch('/api/customers?perPage=100');
+   851→      if (!res.ok) return [];
+   852→      const json = await res.json();
+   853→      return json.data;
+   854→    },
+   855→  });
+   856→
+   857→  const customerMap = useMemo(() => {
+   858→    const map: Record<string, number> = {};
+   859→    for (const c of allCustomers ?? []) {
+   860→      map[c.id] = c.memberPoint;
+   861→    }
+   862→    return map;
+   863→  }, [allCustomers]);
+   864→
+   865→  return (
+   866→    <div className="space-y-4">
+   867→      <Card>
+   868→        <CardContent className="p-4">
+   869→          <DateRangeFilter
+   870→            startDate={startDate}
+   871→            endDate={endDate}
+   872→            onStartChange={setStartDate}
+   873→            onEndChange={setEndDate}
+   874→          />
+   875→        </CardContent>
+   876→      </Card>
+   877→
+   878→      <Card>
+   879→        <CardHeader className="pb-2">
+   880→          <CardTitle className="text-base">Laporan Pelanggan</CardTitle>
+   881→          <CardDescription>Pelanggan dengan transaksi terbanyak</CardDescription>
+   882→        </CardHeader>
+   883→        <CardContent className="p-0">
+   884→          <div className="max-h-96 overflow-y-auto">
+   885→            <Table>
+   886→              <TableHeader>
+   887→                <TableRow className="sticky top-0 bg-background z-10">
+   888→                  <TableHead>No</TableHead>
+   889→                  <TableHead>Nama Pelanggan</TableHead>
+   890→                  <TableHead className="text-right">Total Transaksi</TableHead>
+   891→                  <TableHead className="text-right">Total Belanja</TableHead>
+   892→                  <TableHead className="text-right">Poin Member</TableHead>
+   893→                </TableRow>
+   894→              </TableHeader>
+   895→              <TableBody>
+   896→                {isLoading ? (
+   897→                  Array.from({ length: 5 }).map((_, i) => (
+   898→                    <TableRow key={i}>
+   899→                      <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+   900→                      <TableCell><Skeleton className="h-4 w-36" /></TableCell>
+   901→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+   902→                      <TableCell><Skeleton className="h-4 w-28 ml-auto" /></TableCell>
+   903→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+   904→                    </TableRow>
+   905→                  ))
+   906→                ) : isError || !data?.customers?.length ? (
+   907→                  <TableRow>
+   908→                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+   909→                      {isError ? 'Gagal memuat data' : 'Tidak ada data pelanggan'}
+   910→                    </TableCell>
+   911→                  </TableRow>
+   912→                ) : (
+   913→                  data.customers.map((c: { customerId: string; customerName: string; totalSpent: number; transactionCount: number }, idx: number) => (
+   914→                    <TableRow key={c.customerId}>
+   915→                      <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+   916→                      <TableCell className="font-medium">{c.customerName}</TableCell>
+   917→                      <TableCell className="text-right font-mono">{c.transactionCount}</TableCell>
+   918→                      <TableCell className="text-right font-mono">{formatRupiah(c.totalSpent)}</TableCell>
+   919→                      <TableCell className="text-right">
+   920→                        <Badge variant="secondary">{customerMap[c.customerId] ?? 0}</Badge>
+   921→                      </TableCell>
+   922→                    </TableRow>
+   923→                  ))
+   924→                )}
+   925→              </TableBody>
+   926→            </Table>
+   927→          </div>
+   928→        </CardContent>
+   929→      </Card>
+   930→    </div>
+   931→  );
+   932→}
+   933→
+   934→// ─── Stok Tab ──────────────────────────────────────────────────────────────────
+   935→
+   936→function StokTab() {
+   937→  const { data, isLoading, isError } = useQuery({
+   938→    queryKey: ['report-stock'],
+   939→    queryFn: async () => {
+   940→      const params = new URLSearchParams({ type: 'stock' });
+   941→      const res = await fetch(`/api/reports?${params}`);
+   942→      if (!res.ok) throw new Error('Gagal memuat data');
+   943→      const json = await res.json();
+   944→      return json.data;
+   945→    },
+   946→  });
+   947→
+   948→  const products = data?.products ?? [];
+   949→  const lowStock = data?.lowStockProducts ?? [];
+   950→  const outOfStock = products.filter((p: { stock: number }) => p.stock === 0);
+   951→
+   952→  return (
+   953→    <div className="space-y-4">
+   954→      {/* Summary Cards */}
+   955→      <div className="grid gap-4 sm:grid-cols-3">
+   956→        <Card>
+   957→          <CardContent className="p-4">
+   958→            <div className="flex items-center gap-3">
+   959→              <div className="rounded-lg bg-primary/10 p-2.5">
+   960→                <Package className="h-5 w-5 text-primary" />
+   961→              </div>
+   962→              <div>
+   963→                <p className="text-sm text-muted-foreground">Total Produk</p>
+   964→                {isLoading ? (
+   965→                  <Skeleton className="h-6 w-16" />
+   966→                ) : (
+   967→                  <p className="text-2xl font-bold">{data?.totalProducts ?? 0}</p>
+   968→                )}
+   969→              </div>
+   970→            </div>
+   971→          </CardContent>
+   972→        </Card>
+   973→        <Card>
+   974→          <CardContent className="p-4">
+   975→            <div className="flex items-center gap-3">
+   976→              <div className="rounded-lg bg-amber-500/10 p-2.5">
+   977→                <BarChart3 className="h-5 w-5 text-amber-600" />
+   978→              </div>
+   979→              <div>
+   980→                <p className="text-sm text-muted-foreground">Stok Rendah</p>
+   981→                {isLoading ? (
+   982→                  <Skeleton className="h-6 w-16" />
+   983→                ) : (
+   984→                  <p className="text-2xl font-bold text-amber-600">{lowStock.length}</p>
+   985→                )}
+   986→              </div>
+   987→            </div>
+   988→          </CardContent>
+   989→        </Card>
+   990→        <Card>
+   991→          <CardContent className="p-4">
+   992→            <div className="flex items-center gap-3">
+   993→              <div className="rounded-lg bg-red-500/10 p-2.5">
+   994→                <Package className="h-5 w-5 text-red-600" />
+   995→              </div>
+   996→              <div>
+   997→                <p className="text-sm text-muted-foreground">Stok Habis</p>
+   998→                {isLoading ? (
+   999→                  <Skeleton className="h-6 w-16" />
+  1000→                ) : (
+  1001→                  <p className="text-2xl font-bold text-red-600">{outOfStock.length}</p>
+  1002→                )}
+  1003→              </div>
+  1004→            </div>
+  1005→          </CardContent>
+  1006→        </Card>
+  1007→      </div>
+  1008→
+  1009→      {/* Table */}
+  1010→      <Card>
+  1011→        <CardHeader className="pb-2">
+  1012→          <CardTitle className="text-base">Status Stok Produk</CardTitle>
+  1013→        </CardHeader>
+  1014→        <CardContent className="p-0">
+  1015→          <div className="max-h-96 overflow-y-auto">
+  1016→            <Table>
+  1017→              <TableHeader>
+  1018→                <TableRow className="sticky top-0 bg-background z-10">
+  1019→                  <TableHead>Nama Produk</TableHead>
+  1020→                  <TableHead className="text-right">Stok Saat Ini</TableHead>
+  1021→                  <TableHead className="text-right">Min. Stok</TableHead>
+  1022→                  <TableHead>Status</TableHead>
+  1023→                </TableRow>
+  1024→              </TableHeader>
+  1025→              <TableBody>
+  1026→                {isLoading ? (
+  1027→                  Array.from({ length: 8 }).map((_, i) => (
+  1028→                    <TableRow key={i}>
+  1029→                      <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+  1030→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+  1031→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+  1032→                      <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+  1033→                    </TableRow>
+  1034→                  ))
+  1035→                ) : isError || !products.length ? (
+  1036→                  <TableRow>
+  1037→                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+  1038→                      {isError ? 'Gagal memuat data' : 'Tidak ada produk'}
+  1039→                    </TableCell>
+  1040→                  </TableRow>
+  1041→                ) : (
+  1042→                  products.map((p: { id: string; name: string; stock: number; minStock: number }, idx: number) => {
+  1043→                    let status: { label: string; color: string };
+  1044→                    if (p.stock === 0) {
+  1045→                      status = { label: 'Habis', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' };
+  1046→                    } else if (p.stock <= p.minStock) {
+  1047→                      status = { label: 'Rendah', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' };
+  1048→                    } else {
+  1049→                      status = { label: 'Aman', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' };
+  1050→                    }
+  1051→                    return (
+  1052→                      <TableRow key={p.id || idx}>
+  1053→                        <TableCell className="font-medium">{p.name}</TableCell>
+  1054→                        <TableCell className="text-right font-mono font-medium">{p.stock}</TableCell>
+  1055→                        <TableCell className="text-right font-mono text-muted-foreground">{p.minStock}</TableCell>
+  1056→                        <TableCell>
+  1057→                          <Badge variant="secondary" className={cn(status.color)}>
+  1058→                            {status.label}
+  1059→                          </Badge>
+  1060→                        </TableCell>
+  1061→                      </TableRow>
+  1062→                    );
+  1063→                  })
+  1064→                )}
+  1065→              </TableBody>
+  1066→            </Table>
+  1067→          </div>
+  1068→        </CardContent>
+  1069→      </Card>
+  1070→    </div>
+  1071→  );
+  1072→}
+  1073→
+  1074→// ─── Traffic Tab ──────────────────────────────────────────────────────────
+  1075→
+  1076→function TrafficTab() {
+  1077→  // Daily traffic: transactions per hour today
+  1078→  const todayStr = new Date().toISOString().split('T')[0];
+  1079→  const now = new Date();
+  1080→  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  1081→
+  1082→  const { data: dailyData, isLoading: dailyLoading } = useQuery({
+  1083→    queryKey: ['traffic-daily', todayStr],
+  1084→    queryFn: async () => {
+  1085→      const params = new URLSearchParams({ type: 'daily', startDate: todayStr, endDate: todayStr });
+  1086→      const res = await fetch(`/api/reports?${params}`);
+  1087→      if (!res.ok) return null;
+  1088→      const json = await res.json();
+  1089→      return json.data;
+  1090→    },
+  1091→    refetchInterval: 30000, // auto-refresh every 30s
+  1092→  });
+  1093→
+  1094→  // Monthly traffic: transactions per day this month
+  1095→  const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
+  1096→    queryKey: ['traffic-monthly', monthStart, todayStr],
+  1097→    queryFn: async () => {
+  1098→      const params = new URLSearchParams({ type: 'daily', startDate: monthStart, endDate: todayStr });
+  1099→      const res = await fetch(`/api/reports?${params}`);
+  1100→      if (!res.ok) return null;
+  1101→      const json = await res.json();
+  1102→      return json.data;
+  1103→    },
+  1104→    refetchInterval: 60000, // auto-refresh every 60s
+  1105→  });
+  1106→
+  1107→  // Process hourly data for today
+  1108→  const hourlyData = useMemo(() => {
+  1109→    const hours: { hour: string; label: string; transaksi: number }[] = [];
+  1110→    const currentHour = now.getHours();
+  1111→
+  1112→    // Initialize all hours from opening (6am) to current hour
+  1113→    for (let h = 6; h <= Math.min(currentHour, 23); h++) {
+  1114→      hours.push({
+  1115→        hour: String(h),
+  1116→        label: `${String(h).padStart(2, '0')}:00`,
+  1117→        transaksi: 0,
+  1118→      });
+  1119→    }
+  1120→
+  1121→    if (dailyData?.transactions) {
+  1122→      for (const tx of dailyData.transactions) {
+  1123→        const txDate = new Date(tx.createdAt);
+  1124→        const h = txDate.getHours();
+  1125→        const found = hours.find(item => item.hour === String(h));
+  1126→        if (found) {
+  1127→          found.transaksi += 1;
+  1128→        }
+  1129→      }
+  1130→    }
+  1131→
+  1132→    return hours;
+  1133→  }, [dailyData, now.getHours()]);
+  1134→
+  1135→  // Process daily data for this month
+  1136→  const dailyMonthlyData = useMemo(() => {
+  1137→    const days: { date: string; label: string; transaksi: number; pendapatan: number }[] = [];
+  1138→    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  1139→
+  1140→    for (let d = 1; d <= Math.min(daysInMonth, now.getDate()); d++) {
+  1141→      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  1142→      days.push({
+  1143→        date: dateStr,
+  1144→        label: `${d}`,
+  1145→        transaksi: 0,
+  1146→        pendapatan: 0,
+  1147→      });
+  1148→    }
+  1149→
+  1150→    if (monthlyData?.transactions) {
+  1151→      for (const tx of monthlyData.transactions) {
+  1152→        const day = new Date(tx.createdAt).getDate();
+  1153→        const found = days.find(item => parseInt(item.label) === day);
+  1154→        if (found) {
+  1155→          found.transaksi += 1;
+  1156→          found.pendapatan += tx.grandTotal;
+  1157→        }
+  1158→      }
+  1159→    }
+  1160→
+  1161→    return days;
+  1162→  }, [monthlyData, now.getFullYear(), now.getMonth(), now.getDate()]);
+  1163→
+  1164→  const todayTotalTx = dailyData?.summary?.totalTransactions ?? 0;
+  1165→  const todayTotalRevenue = dailyData?.summary?.totalSales ?? 0;
+  1166→  const monthTotalTx = monthlyData?.summary?.totalTransactions ?? 0;
+  1167→  const monthTotalRevenue = monthlyData?.summary?.totalSales ?? 0;
+  1168→  const peakHour = useMemo(() => {
+  1169→    if (!hourlyData.length) return '-';
+  1170→    const peak = hourlyData.reduce((max, h) => h.transaksi > max.transaksi ? h : max, hourlyData[0]);
+  1171→    return peak.transaksi > 0 ? peak.label : '-';
+  1172→  }, [hourlyData]);
+  1173→
+  1174→  const getExportData = useCallback(() => {
+  1175→    const columns = ['Tanggal', 'Transaksi', 'Pendapatan'];
+  1176→    const rows = dailyMonthlyData
+  1177→      .filter((d) => d.transaksi > 0)
+  1178→      .map((d) => [formatDate(d.date), d.transaksi, formatRupiah(d.pendapatan)]);
+  1179→    const summaryObj = {
+  1180→      'Transaksi Hari Ini': String(todayTotalTx),
+  1181→      'Pendapatan Hari Ini': formatRupiah(todayTotalRevenue),
+  1182→      'Jam Tersibuk': peakHour,
+  1183→      'Transaksi Bulan Ini': String(monthTotalTx),
+  1184→      'Pendapatan Bulan Ini': formatRupiah(monthTotalRevenue),
+  1185→    };
+  1186→    return { title: 'Traffic Report', subtitle: 'Bulan ' + now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }), columns, rows, summary: summaryObj };
+  1187→  }, [dailyMonthlyData, todayTotalTx, todayTotalRevenue, peakHour, monthTotalTx, monthTotalRevenue, now]);
+  1188→
+  1189→  const handleExcel = useCallback(() => {
+  1190→    const { title, columns, rows } = getExportData();
+  1191→    exportToExcel({ sheetName: title, columns, rows });
+  1192→  }, [getExportData]);
+  1193→
+  1194→  const handlePrintA4 = useCallback(() => {
+  1195→    const { title, subtitle, columns, rows, summary } = getExportData();
+  1196→    printReport({ title, subtitle, columns, rows, summary });
+  1197→  }, [getExportData]);
+  1198→
+  1199→  const handlePrintThermal = useCallback(() => {
+  1200→    const { title, columns, rows, summary } = getExportData();
+  1201→    printThermal({ storeName: STORE_NAME, title, columns, rows, summary });
+  1202→  }, [getExportData]);
+  1203→
+  1204→  return (
+  1205→    <div className="space-y-4">
+  1206→      <ExportButtons onExcel={handleExcel} onPrintA4={handlePrintA4} onPrintThermal={handlePrintThermal} />
+  1207→
+  1208→      {/* Summary Cards */}
+  1209→      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  1210→        <Card>
+  1211→          <CardContent className="p-4">
+  1212→            <div className="flex items-center gap-3">
+  1213→              <div className="rounded-lg bg-primary/10 p-2.5">
+  1214→                <ShoppingCart className="h-5 w-5 text-primary" />
+  1215→              </div>
+  1216→              <div>
+  1217→                <p className="text-xs text-muted-foreground">Transaksi Hari Ini</p>
+  1218→                {dailyLoading ? (
+  1219→                  <Skeleton className="h-6 w-12" />
+  1220→                ) : (
+  1221→                  <p className="text-2xl font-bold">{todayTotalTx}</p>
+  1222→                )}
+  1223→              </div>
+  1224→            </div>
+  1225→          </CardContent>
+  1226→        </Card>
+  1227→        <Card>
+  1228→          <CardContent className="p-4">
+  1229→            <div className="flex items-center gap-3">
+  1230→              <div className="rounded-lg bg-emerald-500/10 p-2.5">
+  1231→                <DollarSign className="h-5 w-5 text-emerald-600" />
+  1232→              </div>
+  1233→              <div>
+  1234→                <p className="text-xs text-muted-foreground">Pendapatan Hari Ini</p>
+  1235→                {dailyLoading ? (
+  1236→                  <Skeleton className="h-6 w-24" />
+  1237→                ) : (
+  1238→                  <p className="text-lg font-bold text-emerald-600">{formatRupiah(todayTotalRevenue)}</p>
+  1239→                )}
+  1240→              </div>
+  1241→            </div>
+  1242→          </CardContent>
+  1243→        </Card>
+  1244→        <Card>
+  1245→          <CardContent className="p-4">
+  1246→            <div className="flex items-center gap-3">
+  1247→              <div className="rounded-lg bg-amber-500/10 p-2.5">
+  1248→                <Activity className="h-5 w-5 text-amber-600" />
+  1249→              </div>
+  1250→              <div>
+  1251→                <p className="text-xs text-muted-foreground">Jam Tersibuk</p>
+  1252→                {dailyLoading ? (
+  1253→                  <Skeleton className="h-6 w-16" />
+  1254→                ) : (
+  1255→                  <p className="text-2xl font-bold text-amber-600">{peakHour}</p>
+  1256→                )}
+  1257→              </div>
+  1258→            </div>
+  1259→          </CardContent>
+  1260→        </Card>
+  1261→        <Card>
+  1262→          <CardContent className="p-4">
+  1263→            <div className="flex items-center gap-3">
+  1264→              <div className="rounded-lg bg-primary/10 p-2.5">
+  1265→                <Target className="h-5 w-5 text-primary" />
+  1266→              </div>
+  1267→              <div>
+  1268→                <p className="text-xs text-muted-foreground">Transaksi Bulan Ini</p>
+  1269→                {monthlyLoading ? (
+  1270→                  <Skeleton className="h-6 w-12" />
+  1271→                ) : (
+  1272→                  <p className="text-2xl font-bold">{monthTotalTx}</p>
+  1273→                )}
+  1274→              </div>
+  1275→            </div>
+  1276→          </CardContent>
+  1277→        </Card>
+  1278→      </div>
+  1279→
+  1280→      {/* Daily Traffic Chart - Per Hour Today */}
+  1281→      <Card>
+  1282→        <CardHeader className="pb-2">
+  1283→          <div className="flex items-center justify-between">
+  1284→            <div>
+  1285→              <CardTitle className="text-base">Traffic Harian</CardTitle>
+  1286→              <CardDescription className="text-xs">Transaksi per jam hari ini (reset setiap tengah malam)</CardDescription>
+  1287→            </div>
+  1288→            <Badge variant="outline" className="text-xs font-mono">
+  1289→              {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+  1290→            </Badge>
+  1291→          </div>
+  1292→        </CardHeader>
+  1293→        <CardContent>
+  1294→          {dailyLoading ? (
+  1295→            <Skeleton className="h-[250px] w-full" />
+  1296→          ) : !hourlyData.some(h => h.transaksi > 0) ? (
+  1297→            <div className="flex h-[250px] flex-col items-center justify-center text-muted-foreground">
+  1298→              <Activity className="h-10 w-10 mb-2 opacity-30" />
+  1299→              <p className="text-sm">Belum ada transaksi hari ini</p>
+  1300→            </div>
+  1301→          ) : (
+  1302→            <ChartContainer config={dailyTrafficChartConfig} className="h-[250px] w-full">
+  1303→              <BarChart data={hourlyData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+  1304→                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+  1305→                <XAxis
+  1306→                  dataKey="label"
+  1307→                  fontSize={11}
+  1308→                  tickLine={false}
+  1309→                  interval={Math.max(0, Math.floor(hourlyData.length / 8) - 1)}
+  1310→                />
+  1311→                <YAxis fontSize={11} allowDecimals={false} />
+  1312→                <ChartTooltip
+  1313→                  content={
+  1314→                    <ChartTooltipContent
+  1315→                      formatter={(value) => `${value} transaksi`}
+  1316→                    />
+  1317→                  }
+  1318→                />
+  1319→                <Bar
+  1320→                  dataKey="transaksi"
+  1321→                  fill="var(--color-transaksi)"
+  1322→                  radius={[4, 4, 0, 0]}
+  1323→                />
+  1324→              </BarChart>
+  1325→            </ChartContainer>
+  1326→          )}
+  1327→        </CardContent>
+  1328→      </Card>
+  1329→
+  1330→      {/* Monthly Traffic Chart - Per Day This Month */}
+  1331→      <Card>
+  1332→        <CardHeader className="pb-2">
+  1333→          <div className="flex items-center justify-between">
+  1334→            <div>
+  1335→              <CardTitle className="text-base">Traffic Bulanan</CardTitle>
+  1336→              <CardDescription className="text-xs">Transaksi per hari bulan ini (reset setiap tanggal 1)</CardDescription>
+  1337→            </div>
+  1338→            <div className="text-right">
+  1339→              <p className="text-xs text-muted-foreground">Total Bulan Ini</p>
+  1340→              <p className="text-sm font-bold text-emerald-600">{formatRupiah(monthTotalRevenue)}</p>
+  1341→            </div>
+  1342→          </div>
+  1343→        </CardHeader>
+  1344→        <CardContent>
+  1345→          {monthlyLoading ? (
+  1346→            <Skeleton className="h-[300px] w-full" />
+  1347→          ) : !dailyMonthlyData.some(d => d.transaksi > 0) ? (
+  1348→            <div className="flex h-[300px] flex-col items-center justify-center text-muted-foreground">
+  1349→              <Activity className="h-10 w-10 mb-2 opacity-30" />
+  1350→              <p className="text-sm">Belum ada transaksi bulan ini</p>
+  1351→            </div>
+  1352→          ) : (
+  1353→            <ChartContainer config={monthlyTrafficChartConfig} className="h-[300px] w-full">
+  1354→              <AreaChart data={dailyMonthlyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+  1355→                <defs>
+  1356→                  <linearGradient id="fillTransaksi" x1="0" y1="0" x2="0" y2="1">
+  1357→                    <stop offset="5%" stopColor="var(--color-transaksi)" stopOpacity={0.3}/>
+  1358→                    <stop offset="95%" stopColor="var(--color-transaksi)" stopOpacity={0.02}/>
+  1359→                  </linearGradient>
+  1360→                  <linearGradient id="fillPendapatan" x1="0" y1="0" x2="0" y2="1">
+  1361→                    <stop offset="5%" stopColor="var(--color-pendapatan)" stopOpacity={0.3}/>
+  1362→                    <stop offset="95%" stopColor="var(--color-pendapatan)" stopOpacity={0.02}/>
+  1363→                  </linearGradient>
+  1364→                </defs>
+  1365→                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+  1366→                <XAxis
+  1367→                  dataKey="label"
+  1368→                  fontSize={11}
+  1369→                  tickLine={false}
+  1370→                  interval={Math.max(0, Math.floor(dailyMonthlyData.length / 15) - 1)}
+  1371→                />
+  1372→                <YAxis fontSize={11} yAxisId="left" allowDecimals={false} />
+  1373→                <YAxis fontSize={11} yAxisId="right" orientation="right" tickFormatter={(v) => `${(v / 1000).toFixed(0)}rb`} />
+  1374→                <ChartTooltip
+  1375→                  content={
+  1376→                    <ChartTooltipContent
+  1377→                      formatter={(value, name) => {
+  1378→                        if (name === 'pendapatan') return formatRupiah(value as number);
+  1379→                        return `${value} transaksi`;
+  1380→                      }}
+  1381→                      labelFormatter={(label) => {
+  1382→                        const d = dailyMonthlyData.find(item => item.label === label);
+  1383→                        return d ? formatDate(d.date) : String(label);
+  1384→                      }}
+  1385→                    />
+  1386→                  }
+  1387→                />
+  1388→                <ChartLegend content={<ChartLegendContent />} />
+  1389→                <Bar yAxisId="left" dataKey="transaksi" fill="var(--color-transaksi)" radius={[3, 3, 0, 0]} />
+  1390→                <Area yAxisId="right" type="monotone" dataKey="pendapatan" stroke="var(--color-pendapatan)" strokeWidth={2} fill="url(#fillPendapatan)" />
+  1391→              </AreaChart>
+  1392→            </ChartContainer>
+  1393→          )}
+  1394→        </CardContent>
+  1395→      </Card>
+  1396→
+  1397→      {/* Daily Table for This Month */}
+  1398→      <Card>
+  1399→        <CardHeader className="pb-2">
+  1400→          <CardTitle className="text-base">Detail Traffic Harian Bulan Ini</CardTitle>
+  1401→        </CardHeader>
+  1402→        <CardContent className="p-0">
+  1403→          <div className="max-h-96 overflow-y-auto">
+  1404→            <Table>
+  1405→              <TableHeader>
+  1406→                <TableRow className="sticky top-0 bg-background z-10">
+  1407→                  <TableHead>Tanggal</TableHead>
+  1408→                  <TableHead className="text-right">Jumlah Transaksi</TableHead>
+  1409→                  <TableHead className="text-right">Total Pendapatan</TableHead>
+  1410→                </TableRow>
+  1411→              </TableHeader>
+  1412→              <TableBody>
+  1413→                {monthlyLoading ? (
+  1414→                  Array.from({ length: 5 }).map((_, i) => (
+  1415→                    <TableRow key={i}>
+  1416→                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+  1417→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+  1418→                      <TableCell><Skeleton className="h-4 w-28 ml-auto" /></TableCell>
+  1419→                    </TableRow>
+  1420→                  ))
+  1421→                ) : !dailyMonthlyData.filter(d => d.transaksi > 0).length ? (
+  1422→                  <TableRow>
+  1423→                    <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+  1424→                      Tidak ada data
+  1425→                    </TableCell>
+  1426→                  </TableRow>
+  1427→                ) : (
+  1428→                  dailyMonthlyData
+  1429→                    .filter(d => d.transaksi > 0)
+  1430→                    .reverse()
+  1431→                    .map((row) => (
+  1432→                    <TableRow key={row.date}>
+  1433→                      <TableCell>{formatDate(row.date)}</TableCell>
+  1434→                      <TableCell className="text-right font-mono">{row.transaksi}</TableCell>
+  1435→                      <TableCell className="text-right font-mono">{formatRupiah(row.pendapatan)}</TableCell>
+  1436→                    </TableRow>
+  1437→                  ))
+  1438→                )}
+  1439→              </TableBody>
+  1440→            </Table>
+  1441→          </div>
+  1442→        </CardContent>
+  1443→      </Card>
+  1444→    </div>
+  1445→  );
+  1446→}
+  1447→
+  1448→// ─── Main Page ────────────────────────────────────────────────────────────────
+  1449→
+  1450→export default function ReportsPage() {
+  1451→  return (
+  1452→    <div className="space-y-6">
+  1453→      <div>
+  1454→        <h1 className="text-2xl font-bold tracking-tight">Laporan</h1>
+  1455→        <p className="text-muted-foreground">Analisis penjualan, produk, dan stok</p>
+  1456→      </div>
+  1457→
+  1458→      <Tabs defaultValue="traffic" className="space-y-4">
+  1459→        <TabsList className="flex w-full flex-wrap">
+  1460→          <TabsTrigger value="traffic" className="flex-1 min-w-[80px]">
+  1461→            <Activity className="mr-2 h-4 w-4" />
+  1462→            Traffic
+  1463→          </TabsTrigger>
+  1464→          <TabsTrigger value="penjualan" className="flex-1 min-w-[100px]">
+  1465→            <TrendingUp className="mr-2 h-4 w-4" />
+  1466→            Penjualan
+  1467→          </TabsTrigger>
+  1468→          <TabsTrigger value="best-selling" className="flex-1 min-w-[100px]">
+  1469→            <BarChartIcon className="mr-2 h-4 w-4" />
+  1470→            Produk Terlaris
+  1471→          </TabsTrigger>
+  1472→          <TabsTrigger value="profit-loss" className="flex-1 min-w-[100px]">
+  1473→            <DollarSign className="mr-2 h-4 w-4" />
+  1474→            Laba Rugi
+  1475→          </TabsTrigger>
+  1476→          <TabsTrigger value="customer" className="flex-1 min-w-[100px]">
+  1477→            <Users className="mr-2 h-4 w-4" />
+  1478→            Pelanggan
+  1479→          </TabsTrigger>
+  1480→          <TabsTrigger value="stock" className="flex-1 min-w-[100px]">
+  1481→            <Package className="mr-2 h-4 w-4" />
+  1482→            Stok
+  1483→          </TabsTrigger>
+  1484→        </TabsList>
+  1485→
+  1486→        <AnimatePresence mode="wait">
+  1487→          <TabsContent value="traffic">
+  1488→            <motion.div
+  1489→              key="traffic"
+  1490→              initial={{ opacity: 0, y: 8 }}
+  1491→              animate={{ opacity: 1, y: 0 }}
+  1492→              exit={{ opacity: 0, y: -8 }}
+  1493→              transition={{ duration: 0.2 }}
+  1494→            >
+  1495→              <TrafficTab />
+  1496→            </motion.div>
+  1497→          </TabsContent>
+  1498→          <TabsContent value="penjualan">
+  1499→            <motion.div
+  1500→              key="penjualan"
+  1501→              initial={{ opacity: 0, y: 8 }}
+  1502→              animate={{ opacity: 1, y: 0 }}
+  1503→              exit={{ opacity: 0, y: -8 }}
+  1504→              transition={{ duration: 0.2 }}
+  1505→            >
+  1506→              <PenjualanTab />
+  1507→            </motion.div>
+  1508→          </TabsContent>
+  1509→          <TabsContent value="best-selling">
+  1510→            <motion.div
+  1511→              key="best-selling"
+  1512→              initial={{ opacity: 0, y: 8 }}
+  1513→              animate={{ opacity: 1, y: 0 }}
+  1514→              exit={{ opacity: 0, y: -8 }}
+  1515→              transition={{ duration: 0.2 }}
+  1516→            >
+  1517→              <ProdukTerlarisTab />
+  1518→            </motion.div>
+  1519→          </TabsContent>
+  1520→          <TabsContent value="profit-loss">
+  1521→            <motion.div
+  1522→              key="profit-loss"
+  1523→              initial={{ opacity: 0, y: 8 }}
+  1524→              animate={{ opacity: 1, y: 0 }}
+  1525→              exit={{ opacity: 0, y: -8 }}
+  1526→              transition={{ duration: 0.2 }}
+  1527→            >
+  1528→              <LabaRugiTab />
+  1529→            </motion.div>
+  1530→          </TabsContent>
+  1531→          <TabsContent value="customer">
+  1532→            <motion.div
+  1533→              key="customer"
+  1534→              initial={{ opacity: 0, y: 8 }}
+  1535→              animate={{ opacity: 1, y: 0 }}
+  1536→              exit={{ opacity: 0, y: -8 }}
+  1537→              transition={{ duration: 0.2 }}
+  1538→            >
+  1539→              <PelangganTab />
+  1540→            </motion.div>
+  1541→          </TabsContent>
+  1542→          <TabsContent value="stock">
+  1543→            <motion.div
+  1544→              key="stock"
+  1545→              initial={{ opacity: 0, y: 8 }}
+  1546→              animate={{ opacity: 1, y: 0 }}
+  1547→              exit={{ opacity: 0, y: -8 }}
+  1548→              transition={{ duration: 0.2 }}
+  1549→            >
+  1550→              <StokTab />
+  1551→            </motion.div>
+  1552→          </TabsContent>
+  1553→        </AnimatePresence>
+  1554→      </Tabs>
+  1555→    </div>
+  1556→  );
+  1557→}
+  1558→

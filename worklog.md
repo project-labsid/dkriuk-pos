@@ -876,3 +876,49 @@ Stage Summary:
 - Held transactions can be deleted via trash icon button
 - New Traffic tab in Reports shows: 4 summary cards, hourly bar chart (today), daily area+bar combo chart (month), detail table
 - All transactions with `status: 'completed'` automatically appear in reports (no code change needed)
+---
+Task ID: 1-7
+Agent: Main Agent
+Task: Add export/print capabilities to ReportsPage
+
+Work Log:
+- Created `/src/lib/report-export.ts` with 4 pure client-side export/print utilities:
+  - `exportToExcel()`: Uses `xlsx` package to create workbook, auto-size columns, trigger `.xlsx` download
+  - `printReport()`: Opens hidden iframe with A4-styled HTML table + optional summary section, calls `window.print()`
+  - `generateThermalText()`: Generates 32-char-wide plain text formatted for 58mm thermal printers
+  - `printThermal()`: Wraps thermal text in `<pre>` tag in hidden iframe (monospace 10px, 250px wide) and prints
+- Updated ReportsPage.tsx:
+  - Added `Download`, `Printer`, `FileText` icon imports from lucide-react
+  - Added `ExportButtons` shared component (3 buttons: Download Excel, Print A4, Print Thermal)
+  - Added export handlers to **Penjualan** tab: exports date/transaction count/revenue with summary (total tx, total revenue, avg/tx)
+  - Added export handlers to **Produk Terlaris** tab: exports rank/product name/qty sold/revenue
+  - Added export handlers to **Laba Rugi** tab: exports date/profit/HPP with summary (revenue, HPP, gross profit, margin)
+  - Added export handlers to **Traffic** tab: exports monthly daily data with summary (today/monthly tx counts, revenue, peak hour)
+  - All handlers use `useCallback` with `getExportData()` pattern for clean memoization
+
+Stage Summary:
+- 4 tabs (Penjualan, Produk Terlaris, Laba Rugi, Traffic) now have export/print buttons
+- All export logic is pure client-side, no server calls
+- 0 new lint errors introduced (5 pre-existing errors from prior tasks remain unchanged)
+---
+Task ID: 7-9
+Agent: Main Agent
+Task: RP nominal formatting with dots, report export to Excel, print A4 & thermal
+
+Work Log:
+- Added `formatNominal(raw)` and `parseNominal(formatted)` helper functions in POSPage.tsx
+- Changed cash amount input from `type="number"` to `type="text" inputMode="numeric"` with auto-dot formatting
+- Updated split payment inputs and cart discount input with same formatting
+- Fixed all `parseFloat(cashAmount)` references to use `parseInt(cashAmount)` or `parseNominal()`
+- Fixed quick cash button active-state comparisons
+- Created `/src/lib/report-export.ts` with 4 export functions: `exportToExcel`, `printReport`, `generateThermalText`, `printThermal`
+- Installed `xlsx` npm package for Excel generation
+- Added `ExportButtons` component (Download Excel, Print A4, Print Thermal) to 4 report tabs: Traffic, Penjualan, Produk Terlaris, Laba Rugi
+- Restored missing `BarChart3` import that was accidentally removed by subagent
+- Fixed useMemo dependency lint errors in TrafficTab
+- Verified all export buttons render correctly in browser
+
+Stage Summary:
+- All monetary inputs in POS now auto-format with dots (10.000) as user types
+- Reports can be exported to Excel (.xlsx), printed on A4 paper, or printed on 58mm thermal receipt
+- No runtime errors, 1 React Compiler warning (non-blocking)

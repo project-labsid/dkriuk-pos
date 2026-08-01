@@ -76,6 +76,16 @@ function formatRupiah(amount: number): string {
   }).format(amount);
 }
 
+function formatNominal(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+function parseNominal(formatted: string): number {
+  return parseInt(formatted.replace(/\D/g, ''), 10) || 0;
+}
+
 function formatDateTime(date: string): string {
   return new Date(date).toLocaleDateString('id-ID', {
     day: '2-digit',
@@ -508,7 +518,7 @@ export default function POSPage() {
         changeAmount = paidAmount - calculations.grandTotal;
       }
     } else if (selectedPaymentMethod === 'cash') {
-      const cash = parseFloat(cashAmount) || 0;
+      const cash = parseInt(cashAmount) || 0;
       if (cash < calculations.grandTotal) {
         toast.error('Jumlah pembayaran kurang');
         return;
@@ -793,15 +803,16 @@ export default function POSPage() {
             {/* Discount input */}
             <div className="relative">
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 min={0}
                 placeholder="Diskon"
                 className="h-7 w-16 text-right text-xs px-1.5"
-                value={item.discount || ''}
+                value={item.discount ? formatNominal(String(item.discount)) : ''}
                 onChange={(e) =>
                   cart.updateItemDiscount(
                     item.product.id,
-                    Math.max(0, parseFloat(e.target.value) || 0)
+                    parseNominal(e.target.value)
                   )
                 }
               />
@@ -1321,15 +1332,16 @@ export default function POSPage() {
                         {PAYMENT_METHODS.find((m) => m.value === split.method)?.label}
                       </span>
                       <Input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
                         min={0}
                         placeholder="0"
                         className="h-8 flex-1 text-right text-sm"
-                        value={split.amount || ''}
+                        value={split.amount ? formatNominal(String(split.amount)) : ''}
                         onChange={(e) =>
                           handleUpdateSplitAmount(
                             i,
-                            Math.max(0, parseFloat(e.target.value) || 0)
+                            parseNominal(e.target.value)
                           )
                         }
                       />
@@ -1367,17 +1379,17 @@ export default function POSPage() {
                 {/* Quick cash buttons */}
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    variant={cashAmount === String(calculations.grandTotal) ? 'default' : 'outline'}
+                    variant={parseInt(cashAmount) === Math.round(calculations.grandTotal) ? 'default' : 'outline'}
                     size="sm"
                     className="text-xs"
-                    onClick={() => setCashAmount(String(calculations.grandTotal))}
+                    onClick={() => setCashAmount(String(Math.round(calculations.grandTotal)))}
                   >
                     Uang Pas
                   </Button>
                   {QUICK_CASH_AMOUNTS.map((amount) => (
                     <Button
                       key={amount}
-                      variant={cashAmount === String(amount) ? 'default' : 'outline'}
+                      variant={parseInt(cashAmount) === amount ? 'default' : 'outline'}
                       size="sm"
                       className="text-xs"
                       onClick={() => setCashAmount(String(amount))}
@@ -1387,16 +1399,20 @@ export default function POSPage() {
                   ))}
                 </div>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   min={0}
                   placeholder="Masukkan jumlah..."
                   className="text-right text-lg font-semibold"
-                  value={cashAmount}
-                  onChange={(e) => setCashAmount(e.target.value)}
+                  value={cashAmount ? formatNominal(cashAmount) : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    setCashAmount(raw);
+                  }}
                   autoFocus
                 />
                 {/* Change calculation */}
-                {cashAmount && parseFloat(cashAmount) >= calculations.grandTotal && (
+                {cashAmount && parseNominal(cashAmount) >= calculations.grandTotal && (
                   <motion.div
                     {...scaleIn}
                     className="flex items-center justify-between rounded-lg bg-emerald-50 dark:bg-emerald-900/20 p-3"
@@ -1406,18 +1422,18 @@ export default function POSPage() {
                     </span>
                     <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
                       {formatRupiah(
-                        parseFloat(cashAmount) - calculations.grandTotal
+                        parseNominal(cashAmount) - calculations.grandTotal
                       )}
                     </span>
                   </motion.div>
                 )}
-                {cashAmount && parseFloat(cashAmount) > 0 && parseFloat(cashAmount) < calculations.grandTotal && (
+                {cashAmount && parseNominal(cashAmount) > 0 && parseNominal(cashAmount) < calculations.grandTotal && (
                   <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-3">
                     <span className="text-sm font-medium text-destructive">
                       Kurang
                     </span>
                     <span className="text-sm font-bold text-destructive">
-                      {formatRupiah(calculations.grandTotal - parseFloat(cashAmount))}
+                      {formatRupiah(calculations.grandTotal - parseNominal(cashAmount))}
                     </span>
                   </div>
                 )}
@@ -1517,7 +1533,7 @@ export default function POSPage() {
                 createTransactionMutation.isPending ||
                 (selectedPaymentMethod === 'cash' &&
                   paymentSplits.length === 0 &&
-                  (!cashAmount || parseFloat(cashAmount) < calculations.grandTotal)) ||
+                  (!cashAmount || parseNominal(cashAmount) < calculations.grandTotal)) ||
                 (paymentSplits.length > 0 && paymentSplitsTotal < calculations.grandTotal)
               }
             >

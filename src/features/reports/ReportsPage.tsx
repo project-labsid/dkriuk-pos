@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import {
+  BarChart3,
   BarChart as BarChartIcon,
   TrendingUp,
   Users,
@@ -14,8 +15,12 @@ import {
   ShoppingCart,
   Target,
   Activity,
+  Download,
+  Printer,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { exportToExcel, printReport, printThermal } from '@/lib/report-export';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -177,6 +182,33 @@ const monthlyTrafficChartConfig = {
   pendapatan: { label: 'Pendapatan', color: 'hsl(var(--chart-1))' },
 } satisfies ChartConfig;
 
+// ─── Shared Export Buttons ───────────────────────────────────────────────────
+
+function ExportButtons({ onExcel, onPrintA4, onPrintThermal }: {
+  onExcel: () => void;
+  onPrintA4: () => void;
+  onPrintThermal: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Button variant="outline" size="sm" onClick={onExcel}>
+        <Download className="mr-1.5 h-4 w-4" />
+        Download Excel
+      </Button>
+      <Button variant="outline" size="sm" onClick={onPrintA4}>
+        <Printer className="mr-1.5 h-4 w-4" />
+        Print A4
+      </Button>
+      <Button variant="outline" size="sm" onClick={onPrintThermal}>
+        <FileText className="mr-1.5 h-4 w-4" />
+        Print Thermal
+      </Button>
+    </div>
+  );
+}
+
+const STORE_NAME = 'POS Toko';
+
 // ─── Penjualan Tab ─────────────────────────────────────────────────────────────
 
 function PenjualanTab() {
@@ -213,6 +245,38 @@ function PenjualanTab() {
   const summary = data?.summary;
   const avgPerTransaction = summary ? (summary.totalSales / (summary.totalTransactions || 1)) : 0;
 
+  const getExportData = useCallback(() => {
+    const columns = ['Tanggal', 'Jumlah Transaksi', 'Total Pendapatan'];
+    const rows = dailyData.map((d) => [
+      formatDate(d.date),
+      d.transactions,
+      formatRupiah(d.revenue),
+    ]);
+    const summaryObj = summary
+      ? {
+          'Total Transaksi': String(summary.totalTransactions ?? 0),
+          'Total Pendapatan': formatRupiah(summary.totalSales ?? 0),
+          'Rata-rata / Transaksi': formatRupiah(avgPerTransaction),
+        }
+      : undefined;
+    return { title: 'Laporan Penjualan', subtitle: `${formatDate(startDate)} – ${formatDate(endDate)}`, columns, rows, summary: summaryObj };
+  }, [dailyData, summary, avgPerTransaction, startDate, endDate]);
+
+  const handleExcel = useCallback(() => {
+    const { title, columns, rows } = getExportData();
+    exportToExcel({ sheetName: title, columns, rows });
+  }, [getExportData]);
+
+  const handlePrintA4 = useCallback(() => {
+    const { title, subtitle, columns, rows, summary } = getExportData();
+    printReport({ title, subtitle, columns, rows, summary });
+  }, [getExportData]);
+
+  const handlePrintThermal = useCallback(() => {
+    const { title, columns, rows, summary } = getExportData();
+    printThermal({ storeName: STORE_NAME, title, columns, rows, summary });
+  }, [getExportData]);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -225,6 +289,8 @@ function PenjualanTab() {
           />
         </CardContent>
       </Card>
+
+      <ExportButtons onExcel={handleExcel} onPrintA4={handlePrintA4} onPrintThermal={handlePrintThermal} />
 
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
@@ -416,6 +482,32 @@ function ProdukTerlarisTab() {
     }));
   }, [top10]);
 
+  const getExportData = useCallback(() => {
+    const columns = ['Peringkat', 'Nama Produk', 'Qty Terjual', 'Pendapatan'];
+    const rows = top10.map((p, idx) => [
+      `#${idx + 1}`,
+      p.productName,
+      p.totalQuantity,
+      formatRupiah(p.totalRevenue),
+    ]);
+    return { title: 'Produk Terlaris', subtitle: `${formatDate(startDate)} – ${formatDate(endDate)}`, columns, rows };
+  }, [top10, startDate, endDate]);
+
+  const handleExcel = useCallback(() => {
+    const { title, columns, rows } = getExportData();
+    exportToExcel({ sheetName: title, columns, rows });
+  }, [getExportData]);
+
+  const handlePrintA4 = useCallback(() => {
+    const { title, subtitle, columns, rows } = getExportData();
+    printReport({ title, subtitle, columns, rows });
+  }, [getExportData]);
+
+  const handlePrintThermal = useCallback(() => {
+    const { title, columns, rows } = getExportData();
+    printThermal({ storeName: STORE_NAME, title, columns, rows });
+  }, [getExportData]);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -428,6 +520,8 @@ function ProdukTerlarisTab() {
           />
         </CardContent>
       </Card>
+
+      <ExportButtons onExcel={handleExcel} onPrintA4={handlePrintA4} onPrintThermal={handlePrintThermal} />
 
       {/* Horizontal Bar Chart */}
       <Card>
@@ -583,6 +677,39 @@ function LabaRugiTab() {
 
   const margin = data?.revenue ? ((data.grossProfit / data.revenue) * 100) : 0;
 
+  const getExportData = useCallback(() => {
+    const columns = ['Tanggal', 'Laba', 'HPP'];
+    const rows = chartDailyData.map((d) => [
+      formatDate(d.date),
+      formatRupiah(d.laba),
+      formatRupiah(d.hpp),
+    ]);
+    const summaryObj = data
+      ? {
+          'Total Pendapatan': formatRupiah(data.revenue ?? 0),
+          'Total HPP': formatRupiah(data.costOfGoodsSold ?? 0),
+          'Laba Kotor': formatRupiah(data.grossProfit ?? 0),
+          'Margin': `${margin.toFixed(1)}%`,
+        }
+      : undefined;
+    return { title: 'Laporan Laba Rugi', subtitle: `${formatDate(startDate)} – ${formatDate(endDate)}`, columns, rows, summary: summaryObj };
+  }, [chartDailyData, data, margin, startDate, endDate]);
+
+  const handleExcel = useCallback(() => {
+    const { title, columns, rows } = getExportData();
+    exportToExcel({ sheetName: title, columns, rows });
+  }, [getExportData]);
+
+  const handlePrintA4 = useCallback(() => {
+    const { title, subtitle, columns, rows, summary } = getExportData();
+    printReport({ title, subtitle, columns, rows, summary });
+  }, [getExportData]);
+
+  const handlePrintThermal = useCallback(() => {
+    const { title, columns, rows, summary } = getExportData();
+    printThermal({ storeName: STORE_NAME, title, columns, rows, summary });
+  }, [getExportData]);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -595,6 +722,8 @@ function LabaRugiTab() {
           />
         </CardContent>
       </Card>
+
+      <ExportButtons onExcel={handleExcel} onPrintA4={handlePrintA4} onPrintThermal={handlePrintThermal} />
 
       {/* Summary */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1002,7 +1131,7 @@ function TrafficTab() {
     }
 
     return hours;
-  }, [dailyData, now.getHours()]);
+  }, [dailyData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Process daily data for this month
   const dailyMonthlyData = useMemo(() => {
@@ -1031,7 +1160,7 @@ function TrafficTab() {
     }
 
     return days;
-  }, [monthlyData, now.getFullYear(), now.getMonth(), now.getDate()]);
+  }, [monthlyData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const todayTotalTx = dailyData?.summary?.totalTransactions ?? 0;
   const todayTotalRevenue = dailyData?.summary?.totalSales ?? 0;
@@ -1043,8 +1172,42 @@ function TrafficTab() {
     return peak.transaksi > 0 ? peak.label : '-';
   }, [hourlyData]);
 
+  const monthLabel = useMemo(() => now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }), []);
+
+  const getExportData = useCallback(() => {
+    const columns = ['Tanggal', 'Transaksi', 'Pendapatan'];
+    const rows = dailyMonthlyData
+      .filter((d) => d.transaksi > 0)
+      .map((d) => [formatDate(d.date), d.transaksi, formatRupiah(d.pendapatan)]);
+    const summaryObj = {
+      'Transaksi Hari Ini': String(todayTotalTx),
+      'Pendapatan Hari Ini': formatRupiah(todayTotalRevenue),
+      'Jam Tersibuk': peakHour,
+      'Transaksi Bulan Ini': String(monthTotalTx),
+      'Pendapatan Bulan Ini': formatRupiah(monthTotalRevenue),
+    };
+    return { title: 'Traffic Report', subtitle: 'Bulan ' + monthLabel, columns, rows, summary: summaryObj };
+  }, [dailyMonthlyData, todayTotalTx, todayTotalRevenue, peakHour, monthTotalTx, monthTotalRevenue, monthLabel]);
+
+  const handleExcel = useCallback(() => {
+    const { title, columns, rows } = getExportData();
+    exportToExcel({ sheetName: title, columns, rows });
+  }, [getExportData]);
+
+  const handlePrintA4 = useCallback(() => {
+    const { title, subtitle, columns, rows, summary } = getExportData();
+    printReport({ title, subtitle, columns, rows, summary });
+  }, [getExportData]);
+
+  const handlePrintThermal = useCallback(() => {
+    const { title, columns, rows, summary } = getExportData();
+    printThermal({ storeName: STORE_NAME, title, columns, rows, summary });
+  }, [getExportData]);
+
   return (
     <div className="space-y-4">
+      <ExportButtons onExcel={handleExcel} onPrintA4={handlePrintA4} onPrintThermal={handlePrintThermal} />
+
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
