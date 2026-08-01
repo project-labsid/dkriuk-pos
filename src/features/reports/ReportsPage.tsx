@@ -1477,74 +1477,60 @@ export default function ReportsPage() {
           </TabsTrigger>
         </TabsList>
 
-        <AnimatePresence mode="wait">
-          <TabsContent value="traffic">
-            <motion.div
-              key="traffic"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <TrafficTab />
-            </motion.div>
-          </TabsContent>
-          <TabsContent value="penjualan">
-            <motion.div
-              key="penjualan"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <PenjualanTab />
-            </motion.div>
-          </TabsContent>
-          <TabsContent value="best-selling">
-            <motion.div
-              key="best-selling"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <ProdukTerlarisTab />
-            </motion.div>
-          </TabsContent>
-          <TabsContent value="profit-loss">
-            <motion.div
-              key="profit-loss"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <LabaRugiTab />
-            </motion.div>
-          </TabsContent>
-          <TabsContent value="customer">
-            <motion.div
-              key="customer"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <PelangganTab />
-            </motion.div>
-          </TabsContent>
-          <TabsContent value="stock">
-            <motion.div
-              key="stock"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <StokTab />
-            </motion.div>
-          </TabsContent>
-        </AnimatePresence>
+        <TabsContent value="traffic">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <TrafficTab />
+          </motion.div>
+        </TabsContent>
+        <TabsContent value="penjualan">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <PenjualanTab />
+          </motion.div>
+        </TabsContent>
+        <TabsContent value="best-selling">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ProdukTerlarisTab />
+          </motion.div>
+        </TabsContent>
+        <TabsContent value="profit-loss">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <LabaRugiTab />
+          </motion.div>
+        </TabsContent>
+        <TabsContent value="customer">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <PelangganTab />
+          </motion.div>
+        </TabsContent>
+        <TabsContent value="stock">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <StokTab />
+          </motion.div>
+        </TabsContent>
       </Tabs>
     </div>
   );

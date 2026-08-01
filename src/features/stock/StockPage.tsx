@@ -963,28 +963,24 @@ export default function StockPage() {
           </TabsTrigger>
         </TabsList>
 
-        <AnimatePresence mode="wait">
-          <TabsContent value="history">
-            <motion.div
-              key="riwayat"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <RiwayatStokTab />
-            </motion.div>
-          </TabsContent>
-          <TabsContent value="in">
-            <StokMasukTab />
-          </TabsContent>
-          <TabsContent value="out">
-            <StokKeluarTab />
-          </TabsContent>
-          <TabsContent value="opname">
-            <StockOpnameTab />
-          </TabsContent>
-        </AnimatePresence>
+        <TabsContent value="history">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <RiwayatStokTab />
+          </motion.div>
+        </TabsContent>
+        <TabsContent value="in">
+          <StokMasukTab />
+        </TabsContent>
+        <TabsContent value="out">
+          <StokKeluarTab />
+        </TabsContent>
+        <TabsContent value="opname">
+          <StockOpnameTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
