@@ -554,7 +554,7 @@ export default function UsersPage() {
 
   const branchSelectContent = (
     <SelectContent>
-      <SelectItem value="">-- Tidak ada cabang --</SelectItem>
+      <SelectItem value="none">-- Tidak ada cabang --</SelectItem>
       <SelectGroup>
         <SelectLabel>Pilih Cabang</SelectLabel>
         {allBranches.map((branch) => (
