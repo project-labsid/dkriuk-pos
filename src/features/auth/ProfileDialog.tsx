@@ -149,7 +149,7 @@ export default function ProfileDialog({ open, onOpenChange }: ProfileDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Profil Saya</DialogTitle>
           <DialogDescription>Kelola informasi akun Anda</DialogDescription>

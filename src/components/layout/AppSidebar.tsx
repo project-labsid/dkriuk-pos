@@ -187,7 +187,7 @@ export default function AppSidebar() {
       <Separator />
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-3">
+      <ScrollArea className="flex-1 min-h-0 px-3 py-3">
         <nav className="space-y-5">
           {filteredSections.map((section) => (
             <div key={section.title}>
@@ -306,7 +306,7 @@ export default function AppSidebar() {
     <motion.aside
       animate={{ width: collapsed ? 68 : 256 }}
       transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-      className="hidden md:flex flex-col border-r bg-background shrink-0 relative"
+      className="hidden md:flex flex-col h-full border-r bg-background shrink-0 relative overflow-hidden"
     >
       {/* Collapse toggle */}
       <button

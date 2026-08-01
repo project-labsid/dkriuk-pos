@@ -761,7 +761,7 @@ export default function TransactionsPage() {
 
       {/* ── Detail Dialog ──────────────────────────────────────────────────── */}
       <Dialog open={detailOpen} onOpenChange={closeDetail}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Detail Transaksi</DialogTitle>
             <DialogDescription>

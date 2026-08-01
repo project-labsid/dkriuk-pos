@@ -1114,7 +1114,7 @@ export default function ProductsPage() {
 
       {/* ── Add/Edit Dialog (Desktop) ───────────────────────────────────────── */}
       <Dialog open={formOpen && !editingProduct} onOpenChange={setFormOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Tambah Produk Baru</DialogTitle>
             <DialogDescription>
@@ -1145,7 +1145,7 @@ export default function ProductsPage() {
 
       {/* ── Edit Product Dialog (Desktop) ────────────────────────────────────── */}
       <Dialog open={formOpen && !!editingProduct} onOpenChange={setFormOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Produk</DialogTitle>
             <DialogDescription>

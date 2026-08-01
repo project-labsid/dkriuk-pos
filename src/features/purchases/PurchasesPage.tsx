@@ -628,7 +628,7 @@ export default function PurchasesPage() {
 
       {/* ── Add Purchase Dialog ────────────────────────────────────────────── */}
       <Dialog open={addOpen} onOpenChange={(open) => { if (!open) closeAddDialog(); }}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Tambah Pembelian</DialogTitle>
             <DialogDescription>
@@ -815,7 +815,7 @@ export default function PurchasesPage() {
 
       {/* ── Detail Dialog ──────────────────────────────────────────────────── */}
       <Dialog open={detailOpen} onOpenChange={closeDetail}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Detail Pembelian</DialogTitle>
             <DialogDescription>

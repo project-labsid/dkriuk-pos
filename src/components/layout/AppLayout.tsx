@@ -32,7 +32,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const handleOpenProfile = useCallback(() => setProfileOpen(true), []);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <div className="flex flex-1 overflow-hidden">
         {/* Desktop sidebar */}
         <AppSidebar />

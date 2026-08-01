@@ -407,6 +407,21 @@ export default function POSPage() {
     },
   });
 
+  const deleteHeldMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/transactions/held?id=${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Gagal menghapus transaksi ditahan');
+    },
+    onSuccess: () => {
+      toast.success('Transaksi ditahan berhasil dihapus');
+      refetchHeld();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
   // ─── Actions ─────────────────────────────────────────────────────────────
 
   const addToCart = useCallback(
@@ -1134,7 +1149,7 @@ export default function POSPage() {
 
       {/* ═══ HOLD TRANSACTIONS DIALOG ═══ */}
       <Dialog open={holdDialogOpen} onOpenChange={setHoldDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pause className="size-5" />
@@ -1164,10 +1179,19 @@ export default function POSPage() {
                         {t.heldAt ? formatDateTime(t.heldAt) : ''}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <span className="text-sm font-bold text-primary">
                         {formatRupiah(t.grandTotal)}
                       </span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                        onClick={() => deleteHeldMutation.mutate(t.id)}
+                        disabled={deleteHeldMutation.isPending}
+                      >
+                        {deleteHeldMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                      </Button>
                       <Button
                         size="sm"
                         className="h-8 gap-1"
@@ -1195,7 +1219,7 @@ export default function POSPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md">
           {/* Success Overlay */}
           <AnimatePresence>
             {showSuccess && (

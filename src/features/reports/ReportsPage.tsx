@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import {
-  BarChart3,
+  BarChart as BarChartIcon,
   TrendingUp,
   Users,
   Package,
@@ -12,8 +12,8 @@ import {
   CalendarDays,
   DollarSign,
   ShoppingCart,
-  BarChart,
   Target,
+  Activity,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -53,6 +53,9 @@ import {
   YAxis,
   CartesianGrid,
   Bar,
+  BarChart,
+  AreaChart,
+  Area,
   ResponsiveContainer,
 } from 'recharts';
 
@@ -129,6 +132,17 @@ function DateRangeFilter({
     size="sm"
     variant="outline"
     onClick={() => {
+      const today = new Date().toISOString().split('T')[0];
+      onStartChange(today);
+      onEndChange(today);
+    }}
+  >
+    Hari Ini
+  </Button>
+  <Button
+    size="sm"
+    variant="outline"
+    onClick={() => {
       onStartChange(defaults.start);
       onEndChange(defaults.end);
     }}
@@ -152,6 +166,15 @@ const bestSellingChartConfig = {
 const profitLossChartConfig = {
   laba: { label: 'Laba', color: 'hsl(var(--chart-1))' },
   hpp: { label: 'HPP', color: 'hsl(var(--chart-3))' },
+} satisfies ChartConfig;
+
+const dailyTrafficChartConfig = {
+  transaksi: { label: 'Transaksi', color: 'hsl(var(--chart-1))' },
+} satisfies ChartConfig;
+
+const monthlyTrafficChartConfig = {
+  transaksi: { label: 'Transaksi', color: 'hsl(var(--chart-2))' },
+  pendapatan: { label: 'Pendapatan', color: 'hsl(var(--chart-1))' },
 } satisfies ChartConfig;
 
 // ─── Penjualan Tab ─────────────────────────────────────────────────────────────
@@ -920,6 +943,348 @@ function StokTab() {
   );
 }
 
+// ─── Traffic Tab ──────────────────────────────────────────────────────────
+
+function TrafficTab() {
+  // Daily traffic: transactions per hour today
+  const todayStr = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+
+  const { data: dailyData, isLoading: dailyLoading } = useQuery({
+    queryKey: ['traffic-daily', todayStr],
+    queryFn: async () => {
+      const params = new URLSearchParams({ type: 'daily', startDate: todayStr, endDate: todayStr });
+      const res = await fetch(`/api/reports?${params}`);
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json.data;
+    },
+    refetchInterval: 30000, // auto-refresh every 30s
+  });
+
+  // Monthly traffic: transactions per day this month
+  const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
+    queryKey: ['traffic-monthly', monthStart, todayStr],
+    queryFn: async () => {
+      const params = new URLSearchParams({ type: 'daily', startDate: monthStart, endDate: todayStr });
+      const res = await fetch(`/api/reports?${params}`);
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json.data;
+    },
+    refetchInterval: 60000, // auto-refresh every 60s
+  });
+
+  // Process hourly data for today
+  const hourlyData = useMemo(() => {
+    const hours: { hour: string; label: string; transaksi: number }[] = [];
+    const currentHour = now.getHours();
+
+    // Initialize all hours from opening (6am) to current hour
+    for (let h = 6; h <= Math.min(currentHour, 23); h++) {
+      hours.push({
+        hour: String(h),
+        label: `${String(h).padStart(2, '0')}:00`,
+        transaksi: 0,
+      });
+    }
+
+    if (dailyData?.transactions) {
+      for (const tx of dailyData.transactions) {
+        const txDate = new Date(tx.createdAt);
+        const h = txDate.getHours();
+        const found = hours.find(item => item.hour === String(h));
+        if (found) {
+          found.transaksi += 1;
+        }
+      }
+    }
+
+    return hours;
+  }, [dailyData, now.getHours()]);
+
+  // Process daily data for this month
+  const dailyMonthlyData = useMemo(() => {
+    const days: { date: string; label: string; transaksi: number; pendapatan: number }[] = [];
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+    for (let d = 1; d <= Math.min(daysInMonth, now.getDate()); d++) {
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      days.push({
+        date: dateStr,
+        label: `${d}`,
+        transaksi: 0,
+        pendapatan: 0,
+      });
+    }
+
+    if (monthlyData?.transactions) {
+      for (const tx of monthlyData.transactions) {
+        const day = new Date(tx.createdAt).getDate();
+        const found = days.find(item => parseInt(item.label) === day);
+        if (found) {
+          found.transaksi += 1;
+          found.pendapatan += tx.grandTotal;
+        }
+      }
+    }
+
+    return days;
+  }, [monthlyData, now.getFullYear(), now.getMonth(), now.getDate()]);
+
+  const todayTotalTx = dailyData?.summary?.totalTransactions ?? 0;
+  const todayTotalRevenue = dailyData?.summary?.totalSales ?? 0;
+  const monthTotalTx = monthlyData?.summary?.totalTransactions ?? 0;
+  const monthTotalRevenue = monthlyData?.summary?.totalSales ?? 0;
+  const peakHour = useMemo(() => {
+    if (!hourlyData.length) return '-';
+    const peak = hourlyData.reduce((max, h) => h.transaksi > max.transaksi ? h : max, hourlyData[0]);
+    return peak.transaksi > 0 ? peak.label : '-';
+  }, [hourlyData]);
+
+  return (
+    <div className="space-y-4">
+      {/* Summary Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-primary/10 p-2.5">
+                <ShoppingCart className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Transaksi Hari Ini</p>
+                {dailyLoading ? (
+                  <Skeleton className="h-6 w-12" />
+                ) : (
+                  <p className="text-2xl font-bold">{todayTotalTx}</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-emerald-500/10 p-2.5">
+                <DollarSign className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Pendapatan Hari Ini</p>
+                {dailyLoading ? (
+                  <Skeleton className="h-6 w-24" />
+                ) : (
+                  <p className="text-lg font-bold text-emerald-600">{formatRupiah(todayTotalRevenue)}</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-amber-500/10 p-2.5">
+                <Activity className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Jam Tersibuk</p>
+                {dailyLoading ? (
+                  <Skeleton className="h-6 w-16" />
+                ) : (
+                  <p className="text-2xl font-bold text-amber-600">{peakHour}</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-primary/10 p-2.5">
+                <Target className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Transaksi Bulan Ini</p>
+                {monthlyLoading ? (
+                  <Skeleton className="h-6 w-12" />
+                ) : (
+                  <p className="text-2xl font-bold">{monthTotalTx}</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Daily Traffic Chart - Per Hour Today */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Traffic Harian</CardTitle>
+              <CardDescription className="text-xs">Transaksi per jam hari ini (reset setiap tengah malam)</CardDescription>
+            </div>
+            <Badge variant="outline" className="text-xs font-mono">
+              {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {dailyLoading ? (
+            <Skeleton className="h-[250px] w-full" />
+          ) : !hourlyData.some(h => h.transaksi > 0) ? (
+            <div className="flex h-[250px] flex-col items-center justify-center text-muted-foreground">
+              <Activity className="h-10 w-10 mb-2 opacity-30" />
+              <p className="text-sm">Belum ada transaksi hari ini</p>
+            </div>
+          ) : (
+            <ChartContainer config={dailyTrafficChartConfig} className="h-[250px] w-full">
+              <BarChart data={hourlyData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  fontSize={11}
+                  tickLine={false}
+                  interval={Math.max(0, Math.floor(hourlyData.length / 8) - 1)}
+                />
+                <YAxis fontSize={11} allowDecimals={false} />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value) => `${value} transaksi`}
+                    />
+                  }
+                />
+                <Bar
+                  dataKey="transaksi"
+                  fill="var(--color-transaksi)"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ChartContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Monthly Traffic Chart - Per Day This Month */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Traffic Bulanan</CardTitle>
+              <CardDescription className="text-xs">Transaksi per hari bulan ini (reset setiap tanggal 1)</CardDescription>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Total Bulan Ini</p>
+              <p className="text-sm font-bold text-emerald-600">{formatRupiah(monthTotalRevenue)}</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {monthlyLoading ? (
+            <Skeleton className="h-[300px] w-full" />
+          ) : !dailyMonthlyData.some(d => d.transaksi > 0) ? (
+            <div className="flex h-[300px] flex-col items-center justify-center text-muted-foreground">
+              <Activity className="h-10 w-10 mb-2 opacity-30" />
+              <p className="text-sm">Belum ada transaksi bulan ini</p>
+            </div>
+          ) : (
+            <ChartContainer config={monthlyTrafficChartConfig} className="h-[300px] w-full">
+              <AreaChart data={dailyMonthlyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="fillTransaksi" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-transaksi)" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="var(--color-transaksi)" stopOpacity={0.02}/>
+                  </linearGradient>
+                  <linearGradient id="fillPendapatan" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-pendapatan)" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="var(--color-pendapatan)" stopOpacity={0.02}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  fontSize={11}
+                  tickLine={false}
+                  interval={Math.max(0, Math.floor(dailyMonthlyData.length / 15) - 1)}
+                />
+                <YAxis fontSize={11} yAxisId="left" allowDecimals={false} />
+                <YAxis fontSize={11} yAxisId="right" orientation="right" tickFormatter={(v) => `${(v / 1000).toFixed(0)}rb`} />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name) => {
+                        if (name === 'pendapatan') return formatRupiah(value as number);
+                        return `${value} transaksi`;
+                      }}
+                      labelFormatter={(label) => {
+                        const d = dailyMonthlyData.find(item => item.label === label);
+                        return d ? formatDate(d.date) : String(label);
+                      }}
+                    />
+                  }
+                />
+                <ChartLegend content={<ChartLegendContent />} />
+                <Bar yAxisId="left" dataKey="transaksi" fill="var(--color-transaksi)" radius={[3, 3, 0, 0]} />
+                <Area yAxisId="right" type="monotone" dataKey="pendapatan" stroke="var(--color-pendapatan)" strokeWidth={2} fill="url(#fillPendapatan)" />
+              </AreaChart>
+            </ChartContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Daily Table for This Month */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Detail Traffic Harian Bulan Ini</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="max-h-96 overflow-y-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="sticky top-0 bg-background z-10">
+                  <TableHead>Tanggal</TableHead>
+                  <TableHead className="text-right">Jumlah Transaksi</TableHead>
+                  <TableHead className="text-right">Total Pendapatan</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {monthlyLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-28 ml-auto" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : !dailyMonthlyData.filter(d => d.transaksi > 0).length ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+                      Tidak ada data
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  dailyMonthlyData
+                    .filter(d => d.transaksi > 0)
+                    .reverse()
+                    .map((row) => (
+                    <TableRow key={row.date}>
+                      <TableCell>{formatDate(row.date)}</TableCell>
+                      <TableCell className="text-right font-mono">{row.transaksi}</TableCell>
+                      <TableCell className="text-right font-mono">{formatRupiah(row.pendapatan)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
@@ -930,14 +1295,18 @@ export default function ReportsPage() {
         <p className="text-muted-foreground">Analisis penjualan, produk, dan stok</p>
       </div>
 
-      <Tabs defaultValue="penjualan" className="space-y-4">
+      <Tabs defaultValue="traffic" className="space-y-4">
         <TabsList className="flex w-full flex-wrap">
+          <TabsTrigger value="traffic" className="flex-1 min-w-[80px]">
+            <Activity className="mr-2 h-4 w-4" />
+            Traffic
+          </TabsTrigger>
           <TabsTrigger value="penjualan" className="flex-1 min-w-[100px]">
             <TrendingUp className="mr-2 h-4 w-4" />
             Penjualan
           </TabsTrigger>
           <TabsTrigger value="best-selling" className="flex-1 min-w-[100px]">
-            <BarChart className="mr-2 h-4 w-4" />
+            <BarChartIcon className="mr-2 h-4 w-4" />
             Produk Terlaris
           </TabsTrigger>
           <TabsTrigger value="profit-loss" className="flex-1 min-w-[100px]">
@@ -955,6 +1324,17 @@ export default function ReportsPage() {
         </TabsList>
 
         <AnimatePresence mode="wait">
+          <TabsContent value="traffic">
+            <motion.div
+              key="traffic"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <TrafficTab />
+            </motion.div>
+          </TabsContent>
           <TabsContent value="penjualan">
             <motion.div
               key="penjualan"

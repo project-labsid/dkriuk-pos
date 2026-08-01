@@ -1,0 +1,959 @@
+    60→    60→
+    61→    61→function formatRupiah(amount: number): string {
+    62→    62→  return new Intl.NumberFormat('id-ID', {
+    63→    63→    style: 'currency',
+    64→    64→    currency: 'IDR',
+    65→    65→    minimumFractionDigits: 0,
+    66→    66→    maximumFractionDigits: 0,
+    67→    67→  }).format(amount);
+    68→    68→}
+    69→    69→
+    70→    70→function formatDate(dateStr: string): string {
+    71→    71→  return new Date(dateStr).toLocaleDateString('id-ID', {
+    72→    72→    day: '2-digit',
+    73→    73→    month: 'short',
+    74→    74→    year: 'numeric',
+    75→    75→  });
+    76→    76→}
+    77→    77→
+    78→    78→function getDefaultDates() {
+    79→    79→  const now = new Date();
+    80→    80→  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    81→    81→  return {
+    82→    82→    start: firstDay.toISOString().split('T')[0],
+    83→    83→    end: now.toISOString().split('T')[0],
+    84→    84→  };
+    85→    85→}
+    86→    86→
+    87→    87→// ─── Date Range Filter ────────────────────────────────────────────────────────
+    88→    88→
+    89→    89→function DateRangeFilter({
+    90→    90→  startDate,
+    91→    91→  endDate,
+    92→    92→  onStartChange,
+    93→    93→  onEndChange,
+    94→    94→}: {
+    95→    95→  startDate: string;
+    96→    96→  endDate: string;
+    97→    97→  onStartChange: (v: string) => void;
+    98→    98→  onEndChange: (v: string) => void;
+    99→    99→}) {
+   100→   100→  const defaults = getDefaultDates();
+   101→   101→
+   102→   102→  return (
+   103→   103→    <div className="flex flex-wrap items-end gap-3">
+   104→   104→      <div className="w-full sm:w-auto">
+   105→   105→        <Label className="text-xs text-muted-foreground">Tanggal Mulai</Label>
+   106→   106→        <div className="relative mt-1">
+   107→   107→          <CalendarDays className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   108→   108→          <Input
+   109→   109→            type="date"
+   110→   110→            value={startDate}
+   111→   111→        onChange={(e) => onStartChange(e.target.value)}
+   112→   112→        className="pl-9"
+   113→   113→      />
+   114→   114→    </div>
+   115→   115→  </div>
+   116→   116→  <div className="w-full sm:w-auto">
+   117→   117→    <Label className="text-xs text-muted-foreground">Tanggal Akhir</Label>
+   118→   118→    <div className="relative mt-1">
+   119→   119→      <CalendarDays className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+   120→   120→      <Input
+   121→   121→        type="date"
+   122→   122→        value={endDate}
+   123→   123→        onChange={(e) => onEndChange(e.target.value)}
+   124→   124→        className="pl-9"
+   125→   125→      />
+   126→   126→    </div>
+   127→   127→  </div>
+   128→   128→  <Button
+   129→   129→    size="sm"
+   130→   130→    variant="outline"
+   131→   131→    onClick={() => {
+   132→   132→      onStartChange(defaults.start);
+   133→   133→      onEndChange(defaults.end);
+   134→   134→    }}
+   135→   135→  >
+   136→   136→    Bulan Ini
+   137→   137→  </Button>
+   138→   138→</div>
+   139→   139→  );
+   140→   140→}
+   141→   141→
+   142→   142→// ─── Chart Configs ─────────────────────────────────────────────────────────────
+   143→   143→
+   144→   144→const salesChartConfig = {
+   145→   145→  pendapatan: { label: 'Pendapatan', color: 'hsl(var(--chart-1))' },
+   146→   146→} satisfies ChartConfig;
+   147→   147→
+   148→   148→const bestSellingChartConfig = {
+   149→   149→  terjual: { label: 'Qty Terjual', color: 'hsl(var(--chart-2))' },
+   150→   150→} satisfies ChartConfig;
+   151→   151→
+   152→   152→const profitLossChartConfig = {
+   153→   153→  laba: { label: 'Laba', color: 'hsl(var(--chart-1))' },
+   154→   154→  hpp: { label: 'HPP', color: 'hsl(var(--chart-3))' },
+   155→   155→} satisfies ChartConfig;
+   156→   156→
+   157→   157→// ─── Penjualan Tab ─────────────────────────────────────────────────────────────
+   158→   158→
+   159→   159→function PenjualanTab() {
+   160→   160→  const defaults = getDefaultDates();
+   161→   161→  const [startDate, setStartDate] = useState(defaults.start);
+   162→   162→  const [endDate, setEndDate] = useState(defaults.end);
+   163→   163→
+   164→   164→  const { data, isLoading, isError } = useQuery({
+   165→   165→    queryKey: ['report-daily', startDate, endDate],
+   166→   166→    queryFn: async () => {
+   167→   167→      const params = new URLSearchParams({ type: 'daily' });
+   168→   168→      if (startDate) params.set('startDate', startDate);
+   169→   169→      if (endDate) params.set('endDate', endDate);
+   170→   170→      const res = await fetch(`/api/reports?${params}`);
+   171→   171→      if (!res.ok) throw new Error('Gagal memuat laporan');
+   172→   172→      const json = await res.json();
+   173→   173→      return json.data;
+   174→   174→    },
+   175→   175→  });
+   176→   176→
+   177→   177→  // Group transactions by date for chart & table
+   178→   178→  const dailyData = useMemo(() => {
+   179→   179→    if (!data?.transactions) return [];
+   180→   180→    const grouped: Record<string, { date: string; transactions: number; revenue: number }> = {};
+   181→   181→    for (const tx of data.transactions) {
+   182→   182→      const day = new Date(tx.createdAt).toISOString().split('T')[0];
+   183→   183→      if (!grouped[day]) grouped[day] = { date: day, transactions: 0, revenue: 0 };
+   184→   184→      grouped[day].transactions += 1;
+   185→   185→      grouped[day].revenue += tx.grandTotal;
+   186→   186→    }
+   187→   187→    return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
+   188→   188→  }, [data]);
+   189→   189→
+   190→   190→  const summary = data?.summary;
+   191→   191→  const avgPerTransaction = summary ? (summary.totalSales / (summary.totalTransactions || 1)) : 0;
+   192→   192→
+   193→   193→  return (
+   194→   194→    <div className="space-y-4">
+   195→   195→      <Card>
+   196→   196→        <CardContent className="p-4">
+   197→   197→          <DateRangeFilter
+   198→   198→            startDate={startDate}
+   199→   199→            endDate={endDate}
+   200→   200→            onStartChange={setStartDate}
+   201→   201→            onEndChange={setEndDate}
+   202→   202→          />
+   203→   203→        </CardContent>
+   204→   204→      </Card>
+   205→   205→
+   206→   206→      {/* Summary Cards */}
+   207→   207→      <div className="grid gap-4 sm:grid-cols-3">
+   208→   208→        <Card>
+   209→   209→          <CardContent className="p-4">
+   210→   210→            <div className="flex items-center gap-3">
+   211→   211→              <div className="rounded-lg bg-primary/10 p-2.5">
+   212→   212→                <ShoppingCart className="h-5 w-5 text-primary" />
+   213→   213→              </div>
+   214→   214→              <div>
+   215→   215→                <p className="text-sm text-muted-foreground">Total Transaksi</p>
+   216→   216→                {isLoading ? (
+   217→   217→                  <Skeleton className="h-6 w-16" />
+   218→   218→                ) : (
+   219→   219→                  <p className="text-2xl font-bold">
+   220→   220→                    {summary?.totalTransactions ?? 0}
+   221→   221→                  </p>
+   222→   222→                )}
+   223→   223→              </div>
+   224→   224→            </div>
+   225→   225→          </CardContent>
+   226→   226→        </Card>
+   227→   227→        <Card>
+   228→   228→          <CardContent className="p-4">
+   229→   229→            <div className="flex items-center gap-3">
+   230→   230→              <div className="rounded-lg bg-emerald-500/10 p-2.5">
+   231→   231→                <DollarSign className="h-5 w-5 text-emerald-600" />
+   232→   232→              </div>
+   233→   233→              <div>
+   234→   234→                <p className="text-sm text-muted-foreground">Total Pendapatan</p>
+   235→   235→                {isLoading ? (
+   236→   236→                  <Skeleton className="h-6 w-28" />
+   237→   237→                ) : (
+   238→   238→                  <p className="text-2xl font-bold">
+   239→   239→                    {formatRupiah(summary?.totalSales ?? 0)}
+   240→   240→                  </p>
+   241→   241→                )}
+   242→   242→              </div>
+   243→   243→            </div>
+   244→   244→          </CardContent>
+   245→   245→        </Card>
+   246→   246→        <Card>
+   247→   247→          <CardContent className="p-4">
+   248→   248→            <div className="flex items-center gap-3">
+   249→   249→              <div className="rounded-lg bg-amber-500/10 p-2.5">
+   250→   250→                <Target className="h-5 w-5 text-amber-600" />
+   251→   251→              </div>
+   252→   252→              <div>
+   253→   253→                <p className="text-sm text-muted-foreground">Rata-rata / Transaksi</p>
+   254→   254→                {isLoading ? (
+   255→   255→                  <Skeleton className="h-6 w-24" />
+   256→   256→                ) : (
+   257→   257→                  <p className="text-2xl font-bold">
+   258→   258→                    {formatRupiah(avgPerTransaction)}
+   259→   259→                  </p>
+   260→   260→                )}
+   261→   261→              </div>
+   262→   262→            </div>
+   263→   263→          </CardContent>
+   264→   264→        </Card>
+   265→   265→      </div>
+   266→   266→
+   267→   267→      {/* Line Chart */}
+   268→   268→      <Card>
+   269→   269→        <CardHeader className="pb-2">
+   270→   270→          <CardTitle className="text-base">Grafik Pendapatan Harian</CardTitle>
+   271→   271→        </CardHeader>
+   272→   272→        <CardContent>
+   273→   273→          {isLoading ? (
+   274→   274→            <Skeleton className="h-[300px] w-full" />
+   275→   275→          ) : !dailyData.length ? (
+   276→   276→            <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+   277→   277→              {isError ? 'Gagal memuat data' : 'Tidak ada data penjualan'}
+   278→   278→            </div>
+   279→   279→          ) : (
+   280→   280→            <ChartContainer config={salesChartConfig} className="h-[300px] w-full">
+   281→   281→              <LineChart data={dailyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+   282→   282→                <CartesianGrid strokeDasharray="3 3" />
+   283→   283→                <XAxis
+   284→   284→                  dataKey="date"
+   285→   285→                  tickFormatter={(v) => {
+   286→   286→                    const d = new Date(v);
+   287→   287→                    return `${d.getDate()}/${d.getMonth() + 1}`;
+   288→   288→                  }}
+   289→   289→                  fontSize={12}
+   290→   290→                />
+   291→   291→                <YAxis fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}rb`} />
+   292→   292→                <ChartTooltip
+   293→   293→                  content={
+   294→   294→                    <ChartTooltipContent
+   295→   295→                      formatter={(value) => formatRupiah(value as number)}
+   296→   296→                      labelFormatter={(label) => formatDate(label as string)}
+   297→   297→                    />
+   298→   298→                  }
+   299→   299→                />
+   300→   300→                <Line
+   301→   301→                  type="monotone"
+   302→   302→                  dataKey="revenue"
+   303→   303→                  stroke="var(--color-pendapatan)"
+   304→   304→                  strokeWidth={2}
+   305→   305→                  dot={{ r: 4 }}
+   306→   306→                  activeDot={{ r: 6 }}
+   307→   307→                />
+   308→   308→              </LineChart>
+   309→   309→            </ChartContainer>
+   310→   310→          )}
+   311→   311→        </CardContent>
+   312→   312→      </Card>
+   313→   313→
+   314→   314→      {/* Daily Table */}
+   315→   315→      <Card>
+   316→   316→        <CardHeader className="pb-2">
+   317→   317→          <CardTitle className="text-base">Rincian Harian</CardTitle>
+   318→   318→        </CardHeader>
+   319→   319→        <CardContent className="p-0">
+   320→   320→          <div className="max-h-96 overflow-y-auto">
+   321→   321→            <Table>
+   322→   322→              <TableHeader>
+   323→   323→                <TableRow className="sticky top-0 bg-background z-10">
+   324→   324→                  <TableHead>Tanggal</TableHead>
+   325→   325→                  <TableHead className="text-right">Jumlah Transaksi</TableHead>
+   326→   326→                  <TableHead className="text-right">Total Pendapatan</TableHead>
+   327→   327→                </TableRow>
+   328→   328→              </TableHeader>
+   329→   329→              <TableBody>
+   330→   330→                {isLoading ? (
+   331→   331→                  Array.from({ length: 5 }).map((_, i) => (
+   332→   332→                    <TableRow key={i}>
+   333→   333→                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+   334→   334→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+   335→   335→                      <TableCell><Skeleton className="h-4 w-28 ml-auto" /></TableCell>
+   336→   336→                    </TableRow>
+   337→   337→                  ))
+   338→   338→                ) : !dailyData.length ? (
+   339→   339→                  <TableRow>
+   340→   340→                    <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+   341→   341→                      Tidak ada data
+   342→   342→                    </TableCell>
+   343→   343→                  </TableRow>
+   344→   344→                ) : (
+   345→   345→                  dailyData.map((row) => (
+   346→   346→                    <TableRow key={row.date}>
+   347→   347→                      <TableCell>{formatDate(row.date)}</TableCell>
+   348→   348→                      <TableCell className="text-right font-mono">{row.transactions}</TableCell>
+   349→   349→                      <TableCell className="text-right font-mono">{formatRupiah(row.revenue)}</TableCell>
+   350→   350→                    </TableRow>
+   351→   351→                  ))
+   352→   352→                )}
+   353→   353→              </TableBody>
+   354→   354→            </Table>
+   355→   355→          </div>
+   356→   356→        </CardContent>
+   357→   357→      </Card>
+   358→   358→    </div>
+   359→   359→  );
+   360→   360→}
+   361→   361→
+   362→   362→// ─── Produk Terlaris Tab ──────────────────────────────────────────────────────
+   363→   363→
+   364→   364→function ProdukTerlarisTab() {
+   365→   365→  const defaults = getDefaultDates();
+   366→   366→  const [startDate, setStartDate] = useState(defaults.start);
+   367→   367→  const [endDate, setEndDate] = useState(defaults.end);
+   368→   368→
+   369→   369→  const { data, isLoading, isError } = useQuery({
+   370→   370→    queryKey: ['report-best-selling', startDate, endDate],
+   371→   371→    queryFn: async () => {
+   372→   372→      const params = new URLSearchParams({ type: 'best_selling' });
+   373→   373→      if (startDate) params.set('startDate', startDate);
+   374→   374→      if (endDate) params.set('endDate', endDate);
+   375→   375→      const res = await fetch(`/api/reports?${params}`);
+   376→   376→      if (!res.ok) throw new Error('Gagal memuat data');
+   377→   377→      const json = await res.json();
+   378→   378→      return json.data;
+   379→   379→    },
+   380→   380→  });
+   381→   381→
+   382→   382→  const top10 = useMemo(() => {
+   383→   383→    if (!data?.topProducts) return [];
+   384→   384→    return data.topProducts.slice(0, 10);
+   385→   385→  }, [data]);
+   386→   386→
+   387→   387→  const chartData = useMemo(() => {
+   388→   388→    return [...top10].reverse().map((p) => ({
+   389→   389→      name: p.productName.length > 20 ? p.productName.slice(0, 20) + '...' : p.productName,
+   390→   390→      fullName: p.productName,
+   391→   391→      terjual: p.totalQuantity,
+   392→   392→      revenue: p.totalRevenue,
+   393→   393→    }));
+   394→   394→  }, [top10]);
+   395→   395→
+   396→   396→  return (
+   397→   397→    <div className="space-y-4">
+   398→   398→      <Card>
+   399→   399→        <CardContent className="p-4">
+   400→   400→          <DateRangeFilter
+   401→   401→            startDate={startDate}
+   402→   402→            endDate={endDate}
+   403→   403→            onStartChange={setStartDate}
+   404→   404→            onEndChange={setEndDate}
+   405→   405→          />
+   406→   406→        </CardContent>
+   407→   407→      </Card>
+   408→   408→
+   409→   409→      {/* Horizontal Bar Chart */}
+   410→   410→      <Card>
+   411→   411→        <CardHeader className="pb-2">
+   412→   412→          <CardTitle className="text-base">Top 10 Produk Terlaris</CardTitle>
+   413→   413→          <CardDescription>Berdasarkan jumlah terjual</CardDescription>
+   414→   414→        </CardHeader>
+   415→   415→        <CardContent>
+   416→   416→          {isLoading ? (
+   417→   417→            <Skeleton className="h-[400px] w-full" />
+   418→   418→          ) : !top10.length ? (
+   419→   419→            <div className="flex h-[400px] items-center justify-center text-muted-foreground">
+   420→   420→              {isError ? 'Gagal memuat data' : 'Tidak ada data penjualan'}
+   421→   421→            </div>
+   422→   422→          ) : (
+   423→   423→            <ChartContainer config={bestSellingChartConfig} className="h-[400px] w-full">
+   424→   424→              <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+   425→   425→                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+   426→   426→                <XAxis type="number" fontSize={12} />
+   427→   427→                <YAxis
+   428→   428→                  type="category"
+   429→   429→                  dataKey="name"
+   430→   430→                  width={140}
+   431→   431→                  fontSize={11}
+   432→   432→                  tickLine={false}
+   433→   433→                />
+   434→   434→                <ChartTooltip
+   435→   435→                  content={
+   436→   436→                    <ChartTooltipContent
+   437→   437→                      formatter={(value, _name, item) => {
+   438→   438→                        const payload = item.payload as { fullName?: string; terjual?: number; revenue?: number };
+   439→   439→                        return `${payload.terjual?.toLocaleString()} unit · ${formatRupiah(payload.revenue ?? 0)}`;
+   440→   440→                      }}
+   441→   441→                      labelFormatter={(_label, payload) => {
+   442→   442→                        const item = payload?.[0]?.payload as { fullName?: string };
+   443→   443→                        return item?.fullName || '';
+   444→   444→                      }}
+   445→   445→                    />
+   446→   446→                  }
+   447→   447→                />
+   448→   448→                <Bar
+   449→   449→                  dataKey="terjual"
+   450→   450→                  fill="var(--color-terjual)"
+   451→   451→                  radius={[0, 4, 4, 0]}
+   452→   452→                />
+   453→   453→              </BarChart>
+   454→   454→            </ChartContainer>
+   455→   455→          )}
+   456→   456→        </CardContent>
+   457→   457→      </Card>
+   458→   458→
+   459→   459→      {/* Table */}
+   460→   460→      <Card>
+   461→   461→        <CardHeader className="pb-2">
+   462→   462→          <CardTitle className="text-base">Detail Produk Terlaris</CardTitle>
+   463→   463→        </CardHeader>
+   464→   464→        <CardContent className="p-0">
+   465→   465→          <div className="max-h-96 overflow-y-auto">
+   466→   466→            <Table>
+   467→   467→              <TableHeader>
+   468→   468→                <TableRow className="sticky top-0 bg-background z-10">
+   469→   469→                  <TableHead className="w-12">Peringkat</TableHead>
+   470→   470→                  <TableHead>Nama Produk</TableHead>
+   471→   471→                  <TableHead className="text-right">Qty Terjual</TableHead>
+   472→   472→                  <TableHead className="text-right">Pendapatan</TableHead>
+   473→   473→                </TableRow>
+   474→   474→              </TableHeader>
+   475→   475→              <TableBody>
+   476→   476→                {isLoading ? (
+   477→   477→                  Array.from({ length: 5 }).map((_, i) => (
+   478→   478→                    <TableRow key={i}>
+   479→   479→                      <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+   480→   480→                      <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+   481→   481→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+   482→   482→                      <TableCell><Skeleton className="h-4 w-28 ml-auto" /></TableCell>
+   483→   483→                    </TableRow>
+   484→   484→                  ))
+   485→   485→                ) : !top10.length ? (
+   486→   486→                  <TableRow>
+   487→   487→                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+   488→   488→                      Tidak ada data
+   489→   489→                    </TableCell>
+   490→   490→                  </TableRow>
+   491→   491→                ) : (
+   492→   492→                  top10.map((p, idx) => (
+   493→   493→                    <TableRow key={p.productId}>
+   494→   494→                      <TableCell>
+   495→   495→                        <Badge variant={idx < 3 ? 'default' : 'secondary'} className="font-mono">
+   496→   496→                          #{idx + 1}
+   497→   497→                        </Badge>
+   498→   498→                      </TableCell>
+   499→   499→                      <TableCell className="font-medium">{p.productName}</TableCell>
+   500→   500→                      <TableCell className="text-right font-mono">{p.totalQuantity}</TableCell>
+   501→   501→                      <TableCell className="text-right font-mono">{formatRupiah(p.totalRevenue)}</TableCell>
+   502→   502→                    </TableRow>
+   503→   503→                  ))
+   504→   504→                )}
+   505→   505→              </TableBody>
+   506→   506→            </Table>
+   507→   507→          </div>
+   508→   508→        </CardContent>
+   509→   509→      </Card>
+   510→   510→    </div>
+   511→   511→  );
+   512→   512→}
+   513→   513→
+   514→   514→// ─── Laba Rugi Tab ─────────────────────────────────────────────────────────────
+   515→   515→
+   516→   516→function LabaRugiTab() {
+   517→   517→  const defaults = getDefaultDates();
+   518→   518→  const [startDate, setStartDate] = useState(defaults.start);
+   519→   519→  const [endDate, setEndDate] = useState(defaults.end);
+   520→   520→
+   521→   521→  const { data, isLoading, isError } = useQuery({
+   522→   522→    queryKey: ['report-profit-loss', startDate, endDate],
+   523→   523→    queryFn: async () => {
+   524→   524→      const params = new URLSearchParams({ type: 'profit_loss' });
+   525→   525→      if (startDate) params.set('startDate', startDate);
+   526→   526→      if (endDate) params.set('endDate', endDate);
+   527→   527→      const res = await fetch(`/api/reports?${params}`);
+   528→   528→      if (!res.ok) throw new Error('Gagal memuat data');
+   529→   529→      const json = await res.json();
+   530→   530→      return json.data;
+   531→   531→    },
+   532→   532→  });
+   533→   533→
+   534→   534→  // Also fetch daily data for chart
+   535→   535→  const { data: dailyData } = useQuery({
+   536→   536→    queryKey: ['report-daily-pl', startDate, endDate],
+   537→   537→    queryFn: async () => {
+   538→   538→      const params = new URLSearchParams({ type: 'daily' });
+   539→   539→      if (startDate) params.set('startDate', startDate);
+   540→   540→      if (endDate) params.set('endDate', endDate);
+   541→   541→      const res = await fetch(`/api/reports?${params}`);
+   542→   542→      if (!res.ok) return null;
+   543→   543→      const json = await res.json();
+   544→   544→      return json.data;
+   545→   545→    },
+   546→   546→  });
+   547→   547→
+   548→   548→  const chartDailyData = useMemo(() => {
+   549→   549→    if (!dailyData?.transactions) return [];
+   550→   550→    const grouped: Record<string, { date: string; laba: number; hpp: number }> = {};
+   551→   551→    for (const tx of dailyData.transactions) {
+   552→   552→      const day = new Date(tx.createdAt).toISOString().split('T')[0];
+   553→   553→      if (!grouped[day]) grouped[day] = { date: day, laba: 0, hpp: 0 };
+   554→   554→      const cost = tx.items?.reduce((s: number, item: { costPrice: number; quantity: number }) => s + item.costPrice * item.quantity, 0) ?? 0;
+   555→   555→      grouped[day].laba += tx.grandTotal - cost;
+   556→   556→      grouped[day].hpp += cost;
+   557→   557→    }
+   558→   558→    return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
+   559→   559→  }, [dailyData]);
+   560→   560→
+   561→   561→  const margin = data?.revenue ? ((data.grossProfit / data.revenue) * 100) : 0;
+   562→   562→
+   563→   563→  return (
+   564→   564→    <div className="space-y-4">
+   565→   565→      <Card>
+   566→   566→        <CardContent className="p-4">
+   567→   567→          <DateRangeFilter
+   568→   568→            startDate={startDate}
+   569→   569→            endDate={endDate}
+   570→   570→            onStartChange={setStartDate}
+   571→   571→            onEndChange={setEndDate}
+   572→   572→          />
+   573→   573→        </CardContent>
+   574→   574→      </Card>
+   575→   575→
+   576→   576→      {/* Summary */}
+   577→   577→      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   578→   578→        <Card>
+   579→   579→          <CardContent className="p-4">
+   580→   580→            <p className="text-sm text-muted-foreground">Total Pendapatan</p>
+   581→   581→            {isLoading ? (
+   582→   582→              <Skeleton className="mt-1 h-6 w-28" />
+   583→   583→            ) : (
+   584→   584→              <p className="mt-1 text-2xl font-bold text-emerald-600">{formatRupiah(data?.revenue ?? 0)}</p>
+   585→   585→            )}
+   586→   586→          </CardContent>
+   587→   587→        </Card>
+   588→   588→        <Card>
+   589→   589→          <CardContent className="p-4">
+   590→   590→            <p className="text-sm text-muted-foreground">Total HPP</p>
+   591→   591→            {isLoading ? (
+   592→   592→              <Skeleton className="mt-1 h-6 w-28" />
+   593→   593→            ) : (
+   594→   594→              <p className="mt-1 text-2xl font-bold text-red-600">{formatRupiah(data?.costOfGoodsSold ?? 0)}</p>
+   595→   595→            )}
+   596→   596→          </CardContent>
+   597→   597→        </Card>
+   598→   598→        <Card>
+   599→   599→          <CardContent className="p-4">
+   600→   600→            <p className="text-sm text-muted-foreground">Laba Kotor</p>
+   601→   601→            {isLoading ? (
+   602→   602→              <Skeleton className="mt-1 h-6 w-28" />
+   603→   603→            ) : (
+   604→   604→              <p className={cn(
+   605→   605→                'mt-1 text-2xl font-bold',
+   606→   606→                (data?.grossProfit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'
+   607→   607→              )}>
+   608→   608→                {formatRupiah(data?.grossProfit ?? 0)}
+   609→   609→              </p>
+   610→   610→            )}
+   611→   611→          </CardContent>
+   612→   612→        </Card>
+   613→   613→        <Card>
+   614→   614→          <CardContent className="p-4">
+   615→   615→            <p className="text-sm text-muted-foreground">Margin</p>
+   616→   616→            {isLoading ? (
+   617→   617→              <Skeleton className="mt-1 h-6 w-16" />
+   618→   618→            ) : (
+   619→   619→              <p className={cn(
+   620→   620→                'mt-1 text-2xl font-bold',
+   621→   621→                margin >= 0 ? 'text-emerald-600' : 'text-red-600'
+   622→   622→              )}>
+   623→   623→                {margin.toFixed(1)}%
+   624→   624→              </p>
+   625→   625→            )}
+   626→   626→          </CardContent>
+   627→   627→        </Card>
+   628→   628→      </div>
+   629→   629→
+   630→   630→      {/* Bar Chart: Profit vs Cost */}
+   631→   631→      <Card>
+   632→   632→        <CardHeader className="pb-2">
+   633→   633→          <CardTitle className="text-base">Grafik Laba vs HPP Harian</CardTitle>
+   634→   634→        </CardHeader>
+   635→   635→        <CardContent>
+   636→   636→          {isLoading ? (
+   637→   637→            <Skeleton className="h-[300px] w-full" />
+   638→   638→          ) : !chartDailyData.length ? (
+   639→   639→            <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+   640→   640→              {isError ? 'Gagal memuat data' : 'Tidak ada data'}
+   641→   641→            </div>
+   642→   642→          ) : (
+   643→   643→            <ChartContainer config={profitLossChartConfig} className="h-[300px] w-full">
+   644→   644→              <BarChart data={chartDailyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+   645→   645→                <CartesianGrid strokeDasharray="3 3" />
+   646→   646→                <XAxis
+   647→   647→                  dataKey="date"
+   648→   648→                  tickFormatter={(v) => {
+   649→   649→                    const d = new Date(v);
+   650→   650→                    return `${d.getDate()}/${d.getMonth() + 1}`;
+   651→   651→                  }}
+   652→   652→                  fontSize={12}
+   653→   653→                />
+   654→   654→                <YAxis fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}rb`} />
+   655→   655→                <ChartTooltip
+   656→   656→                  content={
+   657→   657→                    <ChartTooltipContent
+   658→   658→                      formatter={(value) => formatRupiah(value as number)}
+   659→   659→                      labelFormatter={(label) => formatDate(label as string)}
+   660→   660→                    />
+   661→   661→                  }
+   662→   662→                />
+   663→   663→                <ChartLegend content={<ChartLegendContent />} />
+   664→   664→                <Bar dataKey="laba" fill="var(--color-laba)" radius={[4, 4, 0, 0]} />
+   665→   665→                <Bar dataKey="hpp" fill="var(--color-hpp)" radius={[4, 4, 0, 0]} />
+   666→   666→              </BarChart>
+   667→   667→            </ChartContainer>
+   668→   668→          )}
+   669→   669→        </CardContent>
+   670→   670→      </Card>
+   671→   671→    </div>
+   672→   672→  );
+   673→   673→}
+   674→   674→
+   675→   675→// ─── Pelanggan Tab ─────────────────────────────────────────────────────────────
+   676→   676→
+   677→   677→function PelangganTab() {
+   678→   678→  const defaults = getDefaultDates();
+   679→   679→  const [startDate, setStartDate] = useState(defaults.start);
+   680→   680→  const [endDate, setEndDate] = useState(defaults.end);
+   681→   681→
+   682→   682→  const { data, isLoading, isError } = useQuery({
+   683→   683→    queryKey: ['report-customer', startDate, endDate],
+   684→   684→    queryFn: async () => {
+   685→   685→      const params = new URLSearchParams({ type: 'customer' });
+   686→   686→      if (startDate) params.set('startDate', startDate);
+   687→   687→      if (endDate) params.set('endDate', endDate);
+   688→   688→      const res = await fetch(`/api/reports?${params}`);
+   689→   689→      if (!res.ok) throw new Error('Gagal memuat data');
+   690→   690→      const json = await res.json();
+   691→   691→      return json.data;
+   692→   692→    },
+   693→   693→  });
+   694→   694→
+   695→   695→  // Also fetch all customers to get member points
+   696→   696→  const { data: allCustomers } = useQuery({
+   697→   697→    queryKey: ['customers-list'],
+   698→   698→    queryFn: async () => {
+   699→   699→      const res = await fetch('/api/customers?perPage=100');
+   700→   700→      if (!res.ok) return [];
+   701→   701→      const json = await res.json();
+   702→   702→      return json.data;
+   703→   703→    },
+   704→   704→  });
+   705→   705→
+   706→   706→  const customerMap = useMemo(() => {
+   707→   707→    const map: Record<string, number> = {};
+   708→   708→    for (const c of allCustomers ?? []) {
+   709→   709→      map[c.id] = c.memberPoint;
+   710→   710→    }
+   711→   711→    return map;
+   712→   712→  }, [allCustomers]);
+   713→   713→
+   714→   714→  return (
+   715→   715→    <div className="space-y-4">
+   716→   716→      <Card>
+   717→   717→        <CardContent className="p-4">
+   718→   718→          <DateRangeFilter
+   719→   719→            startDate={startDate}
+   720→   720→            endDate={endDate}
+   721→   721→            onStartChange={setStartDate}
+   722→   722→            onEndChange={setEndDate}
+   723→   723→          />
+   724→   724→        </CardContent>
+   725→   725→      </Card>
+   726→   726→
+   727→   727→      <Card>
+   728→   728→        <CardHeader className="pb-2">
+   729→   729→          <CardTitle className="text-base">Laporan Pelanggan</CardTitle>
+   730→   730→          <CardDescription>Pelanggan dengan transaksi terbanyak</CardDescription>
+   731→   731→        </CardHeader>
+   732→   732→        <CardContent className="p-0">
+   733→   733→          <div className="max-h-96 overflow-y-auto">
+   734→   734→            <Table>
+   735→   735→              <TableHeader>
+   736→   736→                <TableRow className="sticky top-0 bg-background z-10">
+   737→   737→                  <TableHead>No</TableHead>
+   738→   738→                  <TableHead>Nama Pelanggan</TableHead>
+   739→   739→                  <TableHead className="text-right">Total Transaksi</TableHead>
+   740→   740→                  <TableHead className="text-right">Total Belanja</TableHead>
+   741→   741→                  <TableHead className="text-right">Poin Member</TableHead>
+   742→   742→                </TableRow>
+   743→   743→              </TableHeader>
+   744→   744→              <TableBody>
+   745→   745→                {isLoading ? (
+   746→   746→                  Array.from({ length: 5 }).map((_, i) => (
+   747→   747→                    <TableRow key={i}>
+   748→   748→                      <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+   749→   749→                      <TableCell><Skeleton className="h-4 w-36" /></TableCell>
+   750→   750→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+   751→   751→                      <TableCell><Skeleton className="h-4 w-28 ml-auto" /></TableCell>
+   752→   752→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+   753→   753→                    </TableRow>
+   754→   754→                  ))
+   755→   755→                ) : isError || !data?.customers?.length ? (
+   756→   756→                  <TableRow>
+   757→   757→                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+   758→   758→                      {isError ? 'Gagal memuat data' : 'Tidak ada data pelanggan'}
+   759→   759→                    </TableCell>
+   760→   760→                  </TableRow>
+   761→   761→                ) : (
+   762→   762→                  data.customers.map((c: { customerId: string; customerName: string; totalSpent: number; transactionCount: number }, idx: number) => (
+   763→   763→                    <TableRow key={c.customerId}>
+   764→   764→                      <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+   765→   765→                      <TableCell className="font-medium">{c.customerName}</TableCell>
+   766→   766→                      <TableCell className="text-right font-mono">{c.transactionCount}</TableCell>
+   767→   767→                      <TableCell className="text-right font-mono">{formatRupiah(c.totalSpent)}</TableCell>
+   768→   768→                      <TableCell className="text-right">
+   769→   769→                        <Badge variant="secondary">{customerMap[c.customerId] ?? 0}</Badge>
+   770→   770→                      </TableCell>
+   771→   771→                    </TableRow>
+   772→   772→                  ))
+   773→   773→                )}
+   774→   774→              </TableBody>
+   775→   775→            </Table>
+   776→   776→          </div>
+   777→   777→        </CardContent>
+   778→   778→      </Card>
+   779→   779→    </div>
+   780→   780→  );
+   781→   781→}
+   782→   782→
+   783→   783→// ─── Stok Tab ──────────────────────────────────────────────────────────────────
+   784→   784→
+   785→   785→function StokTab() {
+   786→   786→  const { data, isLoading, isError } = useQuery({
+   787→   787→    queryKey: ['report-stock'],
+   788→   788→    queryFn: async () => {
+   789→   789→      const params = new URLSearchParams({ type: 'stock' });
+   790→   790→      const res = await fetch(`/api/reports?${params}`);
+   791→   791→      if (!res.ok) throw new Error('Gagal memuat data');
+   792→   792→      const json = await res.json();
+   793→   793→      return json.data;
+   794→   794→    },
+   795→   795→  });
+   796→   796→
+   797→   797→  const products = data?.products ?? [];
+   798→   798→  const lowStock = data?.lowStockProducts ?? [];
+   799→   799→  const outOfStock = products.filter((p: { stock: number }) => p.stock === 0);
+   800→   800→
+   801→   801→  return (
+   802→   802→    <div className="space-y-4">
+   803→   803→      {/* Summary Cards */}
+   804→   804→      <div className="grid gap-4 sm:grid-cols-3">
+   805→   805→        <Card>
+   806→   806→          <CardContent className="p-4">
+   807→   807→            <div className="flex items-center gap-3">
+   808→   808→              <div className="rounded-lg bg-primary/10 p-2.5">
+   809→   809→                <Package className="h-5 w-5 text-primary" />
+   810→   810→              </div>
+   811→   811→              <div>
+   812→   812→                <p className="text-sm text-muted-foreground">Total Produk</p>
+   813→   813→                {isLoading ? (
+   814→   814→                  <Skeleton className="h-6 w-16" />
+   815→   815→                ) : (
+   816→   816→                  <p className="text-2xl font-bold">{data?.totalProducts ?? 0}</p>
+   817→   817→                )}
+   818→   818→              </div>
+   819→   819→            </div>
+   820→   820→          </CardContent>
+   821→   821→        </Card>
+   822→   822→        <Card>
+   823→   823→          <CardContent className="p-4">
+   824→   824→            <div className="flex items-center gap-3">
+   825→   825→              <div className="rounded-lg bg-amber-500/10 p-2.5">
+   826→   826→                <BarChart3 className="h-5 w-5 text-amber-600" />
+   827→   827→              </div>
+   828→   828→              <div>
+   829→   829→                <p className="text-sm text-muted-foreground">Stok Rendah</p>
+   830→   830→                {isLoading ? (
+   831→   831→                  <Skeleton className="h-6 w-16" />
+   832→   832→                ) : (
+   833→   833→                  <p className="text-2xl font-bold text-amber-600">{lowStock.length}</p>
+   834→   834→                )}
+   835→   835→              </div>
+   836→   836→            </div>
+   837→   837→          </CardContent>
+   838→   838→        </Card>
+   839→   839→        <Card>
+   840→   840→          <CardContent className="p-4">
+   841→   841→            <div className="flex items-center gap-3">
+   842→   842→              <div className="rounded-lg bg-red-500/10 p-2.5">
+   843→   843→                <Package className="h-5 w-5 text-red-600" />
+   844→   844→              </div>
+   845→   845→              <div>
+   846→   846→                <p className="text-sm text-muted-foreground">Stok Habis</p>
+   847→   847→                {isLoading ? (
+   848→   848→                  <Skeleton className="h-6 w-16" />
+   849→   849→                ) : (
+   850→   850→                  <p className="text-2xl font-bold text-red-600">{outOfStock.length}</p>
+   851→   851→                )}
+   852→   852→              </div>
+   853→   853→            </div>
+   854→   854→          </CardContent>
+   855→   855→        </Card>
+   856→   856→      </div>
+   857→   857→
+   858→   858→      {/* Table */}
+   859→   859→      <Card>
+   860→   860→        <CardHeader className="pb-2">
+   861→   861→          <CardTitle className="text-base">Status Stok Produk</CardTitle>
+   862→   862→        </CardHeader>
+   863→   863→        <CardContent className="p-0">
+   864→   864→          <div className="max-h-96 overflow-y-auto">
+   865→   865→            <Table>
+   866→   866→              <TableHeader>
+   867→   867→                <TableRow className="sticky top-0 bg-background z-10">
+   868→   868→                  <TableHead>Nama Produk</TableHead>
+   869→   869→                  <TableHead className="text-right">Stok Saat Ini</TableHead>
+   870→   870→                  <TableHead className="text-right">Min. Stok</TableHead>
+   871→   871→                  <TableHead>Status</TableHead>
+   872→   872→                </TableRow>
+   873→   873→              </TableHeader>
+   874→   874→              <TableBody>
+   875→   875→                {isLoading ? (
+   876→   876→                  Array.from({ length: 8 }).map((_, i) => (
+   877→   877→                    <TableRow key={i}>
+   878→   878→                      <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+   879→   879→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+   880→   880→                      <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+   881→   881→                      <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+   882→   882→                    </TableRow>
+   883→   883→                  ))
+   884→   884→                ) : isError || !products.length ? (
+   885→   885→                  <TableRow>
+   886→   886→                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+   887→   887→                      {isError ? 'Gagal memuat data' : 'Tidak ada produk'}
+   888→   888→                    </TableCell>
+   889→   889→                  </TableRow>
+   890→   890→                ) : (
+   891→   891→                  products.map((p: { id: string; name: string; stock: number; minStock: number }, idx: number) => {
+   892→   892→                    let status: { label: string; color: string };
+   893→   893→                    if (p.stock === 0) {
+   894→   894→                      status = { label: 'Habis', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' };
+   895→   895→                    } else if (p.stock <= p.minStock) {
+   896→   896→                      status = { label: 'Rendah', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' };
+   897→   897→                    } else {
+   898→   898→                      status = { label: 'Aman', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' };
+   899→   899→                    }
+   900→   900→                    return (
+   901→   901→                      <TableRow key={p.id || idx}>
+   902→   902→                        <TableCell className="font-medium">{p.name}</TableCell>
+   903→   903→                        <TableCell className="text-right font-mono font-medium">{p.stock}</TableCell>
+   904→   904→                        <TableCell className="text-right font-mono text-muted-foreground">{p.minStock}</TableCell>
+   905→   905→                        <TableCell>
+   906→   906→                          <Badge variant="secondary" className={cn(status.color)}>
+   907→   907→                            {status.label}
+   908→   908→                          </Badge>
+   909→   909→                        </TableCell>
+   910→   910→                      </TableRow>
+   911→   911→                    );
+   912→   912→                  })
+   913→   913→                )}
+   914→   914→              </TableBody>
+   915→   915→            </Table>
+   916→   916→          </div>
+   917→   917→        </CardContent>
+   918→   918→      </Card>
+   919→   919→    </div>
+   920→   920→  );
+   921→   921→}
+   922→   922→
+   923→   923→// ─── Main Page ────────────────────────────────────────────────────────────────
+   924→   924→
+   925→   925→export default function ReportsPage() {
+   926→   926→  return (
+   927→   927→    <div className="space-y-6">
+   928→   928→      <div>
+   929→   929→        <h1 className="text-2xl font-bold tracking-tight">Laporan</h1>
+   930→   930→        <p className="text-muted-foreground">Analisis penjualan, produk, dan stok</p>
+   931→   931→      </div>
+   932→   932→
+   933→   933→      <Tabs defaultValue="penjualan" className="space-y-4">
+   934→   934→        <TabsList className="flex w-full flex-wrap">
+   935→   935→          <TabsTrigger value="penjualan" className="flex-1 min-w-[100px]">
+   936→   936→            <TrendingUp className="mr-2 h-4 w-4" />
+   937→   937→            Penjualan
+   938→   938→          </TabsTrigger>
+   939→   939→          <TabsTrigger value="best-selling" className="flex-1 min-w-[100px]">
+   940→   940→            <BarChart className="mr-2 h-4 w-4" />
+   941→   941→            Produk Terlaris
+   942→   942→          </TabsTrigger>
+   943→   943→          <TabsTrigger value="profit-loss" className="flex-1 min-w-[100px]">
+   944→   944→            <DollarSign className="mr-2 h-4 w-4" />
+   945→   945→            Laba Rugi
+   946→   946→          </TabsTrigger>
+   947→   947→          <TabsTrigger value="customer" className="flex-1 min-w-[100px]">
+   948→   948→            <Users className="mr-2 h-4 w-4" />
+   949→   949→            Pelanggan
+   950→   950→          </TabsTrigger>
+   951→   951→          <TabsTrigger value="stock" className="flex-1 min-w-[100px]">
+   952→   952→            <Package className="mr-2 h-4 w-4" />
+   953→   953→            Stok
+   954→   954→          </TabsTrigger>
+   955→   955→        </TabsList>
+   956→   956→
+   957→   957→        <AnimatePresence mode="wait">
+   958→   958→          <TabsContent value="penjualan">
+   959→   959→            <motion.div
+   960→   960→              key="penjualan"
+   961→   961→              initial={{ opacity: 0, y: 8 }}
+   962→   962→              animate={{ opacity: 1, y: 0 }}
+   963→   963→              exit={{ opacity: 0, y: -8 }}
+   964→   964→              transition={{ duration: 0.2 }}
+   965→   965→            >
+   966→   966→              <PenjualanTab />
+   967→   967→            </motion.div>
+   968→   968→          </TabsContent>
+   969→   969→          <TabsContent value="best-selling">
+   970→   970→            <motion.div
+   971→   971→              key="best-selling"
+   972→   972→              initial={{ opacity: 0, y: 8 }}
+   973→   973→              animate={{ opacity: 1, y: 0 }}
+   974→   974→              exit={{ opacity: 0, y: -8 }}
+   975→   975→              transition={{ duration: 0.2 }}
+   976→   976→            >
+   977→   977→              <ProdukTerlarisTab />
+   978→   978→            </motion.div>
+   979→   979→          </TabsContent>
+   980→   980→          <TabsContent value="profit-loss">
+   981→   981→            <motion.div
+   982→   982→              key="profit-loss"
+   983→   983→              initial={{ opacity: 0, y: 8 }}
+   984→   984→              animate={{ opacity: 1, y: 0 }}
+   985→   985→              exit={{ opacity: 0, y: -8 }}
+   986→   986→              transition={{ duration: 0.2 }}
+   987→   987→            >
+   988→   988→              <LabaRugiTab />
+   989→   989→            </motion.div>
+   990→   990→          </TabsContent>
+   991→   991→          <TabsContent value="customer">
+   992→   992→            <motion.div
+   993→   993→              key="customer"
+   994→   994→              initial={{ opacity: 0, y: 8 }}
+   995→   995→              animate={{ opacity: 1, y: 0 }}
+   996→   996→              exit={{ opacity: 0, y: -8 }}
+   997→   997→              transition={{ duration: 0.2 }}
+   998→   998→            >
+   999→   999→              <PelangganTab />
+  1000→  1000→            </motion.div>
+  1001→  1001→          </TabsContent>
+  1002→  1002→          <TabsContent value="stock">
+  1003→  1003→            <motion.div
+  1004→  1004→              key="stock"
+  1005→  1005→              initial={{ opacity: 0, y: 8 }}
+  1006→  1006→              animate={{ opacity: 1, y: 0 }}
+  1007→  1007→              exit={{ opacity: 0, y: -8 }}
+  1008→  1008→              transition={{ duration: 0.2 }}
+  1009→  1009→            >
+  1010→  1010→              <StokTab />
+  1011→  1011→            </motion.div>
+  1012→  1012→          </TabsContent>
+  1013→  1013→        </AnimatePresence>
+  1014→  1014→      </Tabs>
+  1015→  1015→    </div>
+  1016→  1016→  );
+  1017→  1017→}
+  1018→  1018→

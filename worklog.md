@@ -851,3 +851,28 @@ Stage Summary:
 - Login: admin@pos.com / admin123
 - 0 ESLint errors (10 expected TanStack Table warnings)
 - All 13 feature pages functional
+---
+Task ID: 1-6
+Agent: Main Agent
+Task: Fix sidebar scroll, dialog sizing/blur, held transaction delete, traffic charts
+
+Work Log:
+- Fixed AppLayout: `min-h-screen` → `h-screen flex flex-col overflow-hidden` so sidebar scrolls independently
+- Fixed AppSidebar desktop: added `h-full overflow-hidden` to motion.aside
+- Fixed AppSidebar ScrollArea: added `min-h-0` so flex-1 can shrink and enable scroll
+- Fixed dialog.tsx: overlay `bg-black/50` → `bg-black/30 backdrop-blur-sm`, content `sm:max-w-lg` → `sm:max-w-md`, added `max-h-[85vh] overflow-y-auto rounded-xl p-5 gap-3`
+- Reduced dialog widths: ProductsPage `sm:max-w-2xl` → `sm:max-w-lg`, PurchasesPage same, TransactionsPage same, ProfileDialog `sm:max-w-md` → `sm:max-w-sm`, POS payment `sm:max-w-lg` → `sm:max-w-md`, POS held dialog → `sm:max-w-sm`
+- Added DELETE handler in `/api/transactions/held/route.ts` for deleting held transactions
+- Added `deleteHeldMutation` in POSPage.tsx with Trash2 button in held transaction cards
+- Added Traffic tab in ReportsPage.tsx with daily (per-hour, resets midnight) and monthly (per-day, resets 1st) traffic charts
+- Added "Hari Ini" button to DateRangeFilter
+- Traffic charts auto-refresh (30s daily, 60s monthly)
+- Fixed BarChart naming conflict between lucide-react and recharts (renamed to BarChartIcon)
+- Verified reports API already uses `status: 'completed'` filter, so all completed transactions automatically appear
+
+Stage Summary:
+- Sidebar now scrolls independently from main content
+- All dialogs are smaller, centered, with blur background overlay
+- Held transactions can be deleted via trash icon button
+- New Traffic tab in Reports shows: 4 summary cards, hourly bar chart (today), daily area+bar combo chart (month), detail table
+- All transactions with `status: 'completed'` automatically appear in reports (no code change needed)
