@@ -34,8 +34,9 @@ import {
   Package,
   ImagePlus,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatRupiah } from '@/lib/utils';
 import type { Product, Category, PaginatedResponse } from '@/types';
+import { RupiahInput } from '@/components/ui/rupiah-input';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,15 +102,6 @@ import {
 } from '@/components/ui/sheet';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatRupiah(amount: number): string {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
 
 function getStockColor(stock: number, minStock: number): string {
   if (stock <= minStock) return 'text-red-600 dark:text-red-400 font-semibold';
@@ -819,11 +811,10 @@ export default function ProductsPage() {
               <FormItem>
                 <FormLabel>Harga Modal *</FormLabel>
                 <FormControl>
-                  <Input
-                    type="number"
-                    min="0"
+                  <RupiahInput
+                    value={field.value}
+                    onChange={field.onChange}
                     placeholder="0"
-                    {...field}
                   />
                 </FormControl>
                 <FormMessage />
@@ -837,11 +828,10 @@ export default function ProductsPage() {
               <FormItem>
                 <FormLabel>Harga Jual *</FormLabel>
                 <FormControl>
-                  <Input
-                    type="number"
-                    min="0"
+                  <RupiahInput
+                    value={field.value}
+                    onChange={field.onChange}
                     placeholder="0"
-                    {...field}
                   />
                 </FormControl>
                 <FormMessage />

@@ -29,6 +29,8 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { Purchase, PurchaseItem, Supplier, Product, PaginatedResponse } from '@/types';
+import { cn, formatRupiah } from '@/lib/utils';
+import { RupiahInput } from '@/components/ui/rupiah-input';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,15 +73,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatRupiah(amount: number): string {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('id-ID', {
@@ -743,12 +736,10 @@ export default function PurchasesPage() {
                           render={({ field: priceField }) => (
                             <FormItem>
                               <FormControl>
-                                <Input
-                                  type="number"
-                                  min={0}
+                                <RupiahInput
+                                  value={priceField.value}
+                                  onChange={priceField.onChange}
                                   className="h-9"
-                                  {...priceField}
-                                  onChange={(e) => priceField.onChange(e.target.valueAsNumber || 0)}
                                 />
                               </FormControl>
                               <FormMessage />

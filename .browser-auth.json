@@ -1,0 +1,15 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:3000",
+      "localStorage": [
+        {
+          "name": "pos_user",
+          "value": "{\"id\":\"cms8x51u20003tuc0x5dahkqx\",\"name\":\"Super Admin\",\"email\":\"admin@pos.com\",\"phone\":\"081234567890\",\"avatar\":null,\"role\":\"super_admin\",\"branchId\":null,\"isActive\":true,\"createdAt\":\"2026-07-31T12:28:27.915Z\",\"updatedAt\":\"2026-08-01T13:33:12.865Z\",\"branch\":null}"
+        }
+      ],
+      "sessionStorage": []
+    }
+  ]
+}

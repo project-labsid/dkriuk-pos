@@ -32,7 +32,7 @@ import {
   Printer,
 } from 'lucide-react';
 
-import { cn } from '@/lib/utils';
+import { cn, formatRupiah, formatNominal, parseNominal } from '@/lib/utils';
 import { useCartStore, useSettingsStore, useAuthStore } from '@/store';
 import type { Product, Category, Customer, CartItem, PaymentSplit, Transaction } from '@/types';
 
@@ -66,25 +66,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatRupiah(amount: number): string {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-function formatNominal(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  if (!digits) return '';
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-}
-
-function parseNominal(formatted: string): number {
-  return parseInt(formatted.replace(/\D/g, ''), 10) || 0;
-}
 
 function formatDateTime(date: string): string {
   return new Date(date).toLocaleDateString('id-ID', {

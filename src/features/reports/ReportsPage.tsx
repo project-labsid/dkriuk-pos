@@ -19,7 +19,7 @@ import {
   Printer,
   FileText,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatRupiah } from '@/lib/utils';
 import { exportToExcel, printReport, printThermal } from '@/lib/report-export';
 
 import { Button } from '@/components/ui/button';
@@ -65,15 +65,6 @@ import {
 } from 'recharts';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatRupiah(amount: number): string {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('id-ID', {

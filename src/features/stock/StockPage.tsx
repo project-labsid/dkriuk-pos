@@ -24,7 +24,7 @@ import {
   CheckCircle2,
   X,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatRupiah } from '@/lib/utils';
 import type { StockAdjustment, Product, PaginatedResponse } from '@/types';
 
 import { Button } from '@/components/ui/button';
@@ -90,14 +90,7 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function formatRupiah(amount: number): string {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
+
 
 const typeConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   in: { label: 'Masuk', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', icon: <ArrowDownCircle className="h-3.5 w-3.5" /> },

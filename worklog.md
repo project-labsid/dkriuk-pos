@@ -922,3 +922,27 @@ Stage Summary:
 - All monetary inputs in POS now auto-format with dots (10.000) as user types
 - Reports can be exported to Excel (.xlsx), printed on A4 paper, or printed on 58mm thermal receipt
 - No runtime errors, 1 React Compiler warning (non-blocking)
+---
+Task ID: 1
+Agent: Main Agent
+Task: RP nominal auto-formatting with dots for all price inputs and displays
+
+Work Log:
+- Added `formatRupiah`, `formatNominal`, `parseNominal` to `src/lib/utils.ts` as shared utilities
+- Created `src/components/ui/rupiah-input.tsx` — RupiahInput component that auto-formats numbers with dots (e.g., 10000 → 10.000) while typing
+- Updated ProductsPage.tsx: replaced type="number" inputs for costPrice/sellPrice with RupiahInput, removed local formatRupiah
+- Updated POSPage.tsx: removed local formatRupiah/formatNominal/parseNominal, imported from shared utils
+- Updated PurchasesPage.tsx: replaced type="number" input for costPrice with RupiahInput, removed local formatRupiah
+- Updated ReportsPage.tsx: removed local formatRupiah, imported from shared utils
+- Updated TransactionsPage.tsx: removed local formatRupiah, imported from shared utils
+- Updated StockPage.tsx: removed local formatRupiah, imported from shared utils
+- Updated DashboardPage.tsx: removed local formatRupiah, imported from shared utils
+
+Stage Summary:
+- RupiahInput component works: typing 10000 → displays 10.000, typing 25000 → displays 25.000
+- All 7 pages now use shared formatRupiah from utils.ts (no more duplicates)
+- Product form (Harga Modal, Harga Jual) uses RupiahInput with auto-dot formatting
+- Purchase form (Harga Beli) uses RupiahInput with auto-dot formatting
+- POS cash payment input continues to use formatNominal for display (unchanged)
+- Zero lint errors from these changes
+- Browser verified: Products page inputs format correctly
