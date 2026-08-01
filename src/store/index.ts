@@ -178,7 +178,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     isEnabled: false,
     percentage: 5,
   },
-  storeName: 'Toko Sejahtera',
+  storeName: 'Dkriuk',
   storeAddress: '',
   storePhone: '',
   storeEmail: '',

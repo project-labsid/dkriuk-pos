@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pos-sejahtera-v1';
+const CACHE_NAME = 'dkriuk-pos-v1';
 const OFFLINE_URLS = ['/', '/manifest.json'];
 
 self.addEventListener('install', (event) => {

@@ -16,13 +16,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "POS Sejahtera",
-  description: "Modern Point of Sale System - Aplikasi Kasir Modern",
+  title: "Dkriuk - POS",
+  description: "Dkriuk - Aplikasi Kasir Modern",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "POS Sejahtera",
+    title: "Dkriuk",
   },
   formatDetection: {
     telephone: false,

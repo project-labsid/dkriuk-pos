@@ -1,6 +1,6 @@
 {
-  "name": "POS Sejahtera",
-  "short_name": "POS",
+  "name": "Dkriuk - POS",
+  "short_name": "Dkriuk",
   "description": "Aplikasi Kasir Modern - Point of Sale System",
   "start_url": "/",
   "display": "standalone",

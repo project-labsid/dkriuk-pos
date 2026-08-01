@@ -1534,7 +1534,7 @@ export default function POSPage() {
           <div id="receipt-print" className="bg-white text-black p-6 font-mono text-xs">
             {/* Store Info */}
             <div className="text-center mb-4">
-              <p className="text-sm font-bold text-base">{storeName || 'Toko Sejahtera'}</p>
+              <p className="text-sm font-bold text-base">{storeName || 'Dkriuk'}</p>
               {storeAddress && (
                 <p className="text-[10px] text-gray-600 mt-0.5">{storeAddress}</p>
               )}

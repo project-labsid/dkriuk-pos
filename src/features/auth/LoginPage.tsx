@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Store, Eye, EyeOff, Shield } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -123,11 +123,11 @@ export default function LoginPage() {
             transition={{ delay: 0.2, duration: 0.5 }}
             className="flex flex-col items-center text-center max-w-md"
           >
-            <div className="w-20 h-20 bg-white/15 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-8 border border-white/20">
-              <Store className="w-10 h-10 text-white" />
+            <div className="w-20 h-20 bg-white/15 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-8 border border-white/20 overflow-hidden">
+              <img src="/logo.png" alt="Dkriuk" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-4xl xl:text-5xl font-bold tracking-tight mb-4">
-              POS Sejahtera
+              Dkriuk
             </h1>
             <p className="text-emerald-100 text-lg leading-relaxed">
               Sistem Point of Sale modern untuk mengelola transaksi, stok, dan laporan bisnis Anda dengan mudah dan efisien.
@@ -157,11 +157,11 @@ export default function LoginPage() {
           transition={{ delay: 0.2, duration: 0.5 }}
           className="relative z-10 flex flex-col items-center justify-center h-full text-white"
         >
-          <div className="w-14 h-14 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center mb-3 border border-white/20">
-            <Store className="w-7 h-7 text-white" />
+          <div className="w-14 h-14 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center mb-3 border border-white/20 overflow-hidden">
+            <img src="/logo.png" alt="Dkriuk" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-2xl font-bold">POS Sejahtera</h1>
-          <p className="text-emerald-100 text-sm mt-1">Modern Point of Sale</p>
+          <h1 className="text-2xl font-bold">Dkriuk</h1>
+          <p className="text-emerald-100 text-sm mt-1">Point of Sale</p>
         </motion.div>
       </div>
 
