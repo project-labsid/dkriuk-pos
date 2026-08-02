@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   title: "Dkriuk - POS",
   description: "Dkriuk - Aplikasi Kasir Modern",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/favicon.png",
+    apple: "/icons/icon-192x192.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -49,7 +53,6 @@ export default function RootLayout({
             {children}
           </QueryProvider>
           <Toaster position="top-right" richColors />
-          <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
         </ThemeProvider>
       </body>
     </html>

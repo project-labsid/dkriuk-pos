@@ -946,3 +946,27 @@ Stage Summary:
 - POS cash payment input continues to use formatNominal for display (unchanged)
 - Zero lint errors from these changes
 - Browser verified: Products page inputs format correctly
+---
+Task ID: 1
+Agent: Main
+Task: Add favicon/PWA icons from Dkriuk logo + make notification bell clickable and responsive
+
+Work Log:
+- Generated 8 PWA icon sizes (72, 96, 128, 144, 152, 192, 384, 512) from /public/logo.png using sharp
+- Generated favicon.png (32x32) from logo.png
+- Updated layout.tsx metadata with icons: { icon: "/favicon.png", apple: "/icons/icon-192x192.png" }
+- Removed redundant apple-touch-icon <link> from body (now in metadata)
+- Rebuilt AppHeader.tsx notification bell:
+  - Changed from static Button to Popover with clickable dropdown
+  - Added sample notifications (stok menipis, transaksi berhasil, peringatan stok, laporan harian)
+  - Added "Tandai semua" (mark all read) button
+  - Individual notifications can be clicked to mark as read
+  - Unread count badge dynamically updates
+  - Notification dropdown is fully responsive on mobile (w-[calc(100vw-2rem)] sm:w-96)
+  - Made header heights and button sizes responsive with sm: breakpoints
+  - Verified with agent-browser on both desktop and mobile viewports
+
+Stage Summary:
+- Logo now appears in browser tab (favicon) and PWA manifest for phone install
+- Notification bell is clickable with a popover showing notifications list
+- Mobile responsive: dropdown width adapts, touch-friendly targets, proper spacing
