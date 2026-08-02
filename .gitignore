@@ -33,6 +33,18 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# database
+/db/
+*.db
+*.db-journal
+
+# z.ai sandbox
+.zscripts/
+tool-results/
+.auth-state.json
+upload/
+worklog.md
+
 # vercel
 .vercel
 
