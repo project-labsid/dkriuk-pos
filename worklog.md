@@ -970,3 +970,25 @@ Stage Summary:
 - Logo now appears in browser tab (favicon) and PWA manifest for phone install
 - Notification bell is clickable with a popover showing notifications list
 - Mobile responsive: dropdown width adapts, touch-friendly targets, proper spacing
+---
+Task ID: 2
+Agent: Main
+Task: Migrate database from SQLite to Supabase (PostgreSQL)
+
+Work Log:
+- Updated .env with Supabase PostgreSQL connection URL (session mode pooler, port 5432)
+- Changed prisma/schema.prisma provider from 'sqlite' to 'postgresql'
+- Ran `prisma db push --accept-data-loss` to create all 14 tables in Supabase
+- Discovered port 6543 (transaction mode pooler) doesn't work with Prisma introspection - must use port 5432 (session mode)
+- Wrote custom migration script to transfer data from SQLite to Supabase
+- Fixed type conversion issues: SQLite 0/1 → PostgreSQL boolean, SQLite ms bigint → PostgreSQL timestamp
+- Migrated 29 rows across 6 tables (Category: 1, User: 1, Product: 2, Transaction: 6, TransactionItem: 7, ActivityLog: 12) with 0 errors
+- Updated src/lib/db.ts to explicitly pass datasource URL for reliability
+- Verified all APIs return Supabase data: login (200), users (200), products (200 - 2 products), transactions (200 - 6 transactions)
+- All Prisma queries now use PostgreSQL syntax (public."User", public."Product", etc.)
+
+Stage Summary:
+- Database fully migrated from SQLite (/db/custom.db) to Supabase PostgreSQL
+- Connection: session mode pooler at aws-0-ap-southeast-1.pooler.supabase.com:5432
+- All existing data preserved (users, products, transactions, activity logs)
+- App fully functional with Supabase as the database backend
