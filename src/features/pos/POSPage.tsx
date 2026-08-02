@@ -582,8 +582,45 @@ export default function POSPage() {
   );
 
   const handlePrintReceipt = useCallback(() => {
-    window.print();
-  }, []);
+    const el = document.getElementById('receipt-print');
+    if (!el) return;
+    const html = el.innerHTML;
+    const win = window.open('', '_blank', 'width=320,height=600');
+    if (!win) { toast.error('Popup diblokir, izinkan popup'); return; }
+    win.document.write(`<!DOCTYPE html>
+<html><head><title>Struk - ${storeName || 'Dkriuk'}</title>
+<style>
+  @page { size: 80mm auto; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', monospace; font-size: 12px; padding: 12px; max-width: 320px; margin: 0 auto; color: #000; }
+  img { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto 8px; border-radius: 8px; }
+  .text-center { text-align: center; }
+  .font-bold { font-weight: bold; }
+  .text-sm { font-size: 14px; }
+  .text-base { font-size: 16px; }
+  .text-[10px] { font-size: 10px; }
+  .text-[11px] { font-size: 11px; }
+  .text-gray-600 { color: #555; }
+  .text-gray-500 { color: #777; }
+  .font-semibold { font-weight: 600; }
+  .mb-4 { margin-bottom: 16px; }
+  .mt-0\.5 { margin-top: 2px; }
+  .mt-2 { margin-top: 8px; }
+  .my-2 { margin-top: 8px; margin-bottom: 8px; }
+  .space-y-0\.5 > div { margin-bottom: 2px; }
+  .space-y-1\.5 > div { margin-bottom: 6px; }
+  .flex { display: flex; }
+  .justify-between { justify-content: space-between; }
+  .border-t { border-top: 1px dashed #999; }
+  .border-gray-400 { border-color: #999; }
+  .border-gray-800 { border-top: 2px solid #333; }
+  .text-center.text-\[11px\] { text-align: center; font-size: 11px; }
+  .text-center.text-\[9px\] { text-align: center; font-size: 9px; color: #888; }
+  @media print { body { padding: 8px; } }
+</style></head><body>${html}</body></html>`);
+    win.document.close();
+    Promise.all(Array.from(win.document.querySelectorAll('img')).map(i => i.complete ? Promise.resolve() : new Promise(r => { i.onload = r; i.onerror = r; }))).then(() => win.print());
+  }, [storeName]);
 
   // ─── Filtered Products ───────────────────────────────────────────────────
 
@@ -1534,6 +1571,7 @@ export default function POSPage() {
           <div id="receipt-print" className="bg-white text-black p-6 font-mono text-xs">
             {/* Store Info */}
             <div className="text-center mb-4">
+              <img src="/logo.png" alt="Logo" style={{ width: 64, height: 64, objectFit: 'contain', display: 'block', margin: '0 auto 8px', borderRadius: 8 }} />
               <p className="text-sm font-bold text-base">{storeName || 'Dkriuk'}</p>
               {storeAddress && (
                 <p className="text-[10px] text-gray-600 mt-0.5">{storeAddress}</p>
