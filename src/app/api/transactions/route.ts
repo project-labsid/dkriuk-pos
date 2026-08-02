@@ -148,6 +148,26 @@ export async function POST(request: NextRequest) {
     const { items, ...transactionData } = parsed.data
     const invoiceNumber = generateInvoiceNumber()
 
+    // Pre-validate: check user & products exist
+    const existingUser = await db.user.findUnique({ where: { id: transactionData.userId }, select: { id: true } })
+    if (!existingUser) {
+      return NextResponse.json({ error: 'User tidak ditemukan, silakan login ulang' }, { status: 400 })
+    }
+
+    const productIds = items.map(i => i.productId)
+    const existingProducts = await db.product.findMany({ where: { id: { in: productIds } }, select: { id: true } })
+    const missingIds = productIds.filter(id => !existingProducts.find(p => p.id === id))
+    if (missingIds.length > 0) {
+      return NextResponse.json({ error: 'Beberapa produk tidak ditemukan, refresh halaman kasir' }, { status: 400 })
+    }
+
+    if (transactionData.customerId) {
+      const existingCustomer = await db.customer.findUnique({ where: { id: transactionData.customerId }, select: { id: true } })
+      if (!existingCustomer) {
+        return NextResponse.json({ error: 'Pelanggan tidak ditemukan' }, { status: 400 })
+      }
+    }
+
     const now = new Date()
     const isCompleted = transactionData.status === 'completed'
     const isHeld = transactionData.status === 'held'
@@ -208,6 +228,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Nomor invoice sudah digunakan' },
         { status: 409 }
+      )
+    }
+    // P2003: Foreign key constraint
+    if (error && typeof error === 'object' && 'code' in error && (error as {code:string}).code === 'P2003') {
+      const meta = (error as {meta?:{modelName?:string;field_name?:string}}).meta
+      console.error('FK violation details:', JSON.stringify(meta))
+      return NextResponse.json(
+        { error: 'Data referensi tidak ditemukan (produk, user, atau pelanggan)' },
+        { status: 400 }
       )
     }
     return NextResponse.json(
