@@ -27,6 +27,8 @@ model User {
   activityLogs  ActivityLog[]
   purchases     Purchase[]
   stockAdjustments StockAdjustment[]
+  notifications Notification[]
+  notificationSetting NotificationSetting?
 }
 
 // ===================== BRANCH =====================
@@ -270,4 +272,37 @@ model ActivityLog {
   createdAt DateTime @default(now())
 
   user      User?    @relation(fields: [userId], references: [id])
+}
+
+// ===================== NOTIFICATION =====================
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String?  // null = broadcast ke semua user
+  type        String   // low_stock, out_of_stock, sale_completed, payment_received, new_user, purchase_received, system
+  title       String
+  message     String
+  data        String?  // JSON - additional context
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id])
+}
+
+// ===================== NOTIFICATION SETTING =====================
+
+model NotificationSetting {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  lowStockAlert       Boolean  @default(true)
+  outOfStockAlert     Boolean  @default(true)
+  saleCompleted       Boolean  @default(false)
+  dailyReport         Boolean  @default(false)
+  newUserAlert        Boolean  @default(false)
+  purchaseAlert       Boolean  @default(true)
+  systemAlert         Boolean  @default(true)
+  updatedAt           DateTime @updatedAt
+
+  user                User     @relation(fields: [userId], references: [id])
 }

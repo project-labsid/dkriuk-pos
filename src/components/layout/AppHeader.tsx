@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTheme } from 'next-themes';
-import { Menu, Search, Bell, Sun, Moon, LogOut, User, KeyRound, PackageX, ShoppingCart, AlertTriangle, CheckCheck, Clock } from 'lucide-react';
+import { Menu, Search, Bell, Sun, Moon, LogOut, User, KeyRound, PackageX, ShoppingCart, AlertTriangle, CheckCheck, Clock, Info, Truck, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -23,6 +23,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useNavStore, useAuthStore } from '@/store';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PageName } from '@/types';
 
 const pageTitles: Record<PageName, string> = {
@@ -36,66 +37,57 @@ const pageTitles: Record<PageName, string> = {
   purchases: 'Pembelian',
   stock: 'Manajemen Stok',
   reports: 'Laporan',
-  settings: 'Pengaturan Toko',
+  settings: 'Pengaturan',
   'tax-settings': 'Pajak & Service Charge',
   branches: 'Cabang',
   users: 'Pengguna',
 };
 
-interface NotificationItem {
+interface DbNotification {
   id: string;
+  type: string;
   title: string;
-  description: string;
-  time: string;
-  type: 'warning' | 'success' | 'info';
-  read: boolean;
-  icon: React.ReactNode;
+  message: string;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
+  data: string | null;
 }
 
-const sampleNotifications: NotificationItem[] = [
-  {
-    id: '1',
-    title: 'Stok Menipis',
-    description: 'Kopi Arabica tinggal 5 pcs. Segera restok untuk menghindari kehabisan.',
-    time: '5 menit lalu',
-    type: 'warning',
-    read: false,
-    icon: <PackageX className="w-4 h-4 text-amber-500" />,
-  },
-  {
-    id: '2',
-    title: 'Transaksi Berhasil',
-    description: 'Penjualan #TRX-0842 senilai Rp 450.000 telah berhasil dicatat.',
-    time: '15 menit lalu',
-    type: 'success',
-    read: false,
-    icon: <ShoppingCart className="w-4 h-4 text-emerald-500" />,
-  },
-  {
-    id: '3',
-    title: 'Peringatan Stok',
-    description: '3 produk mendekati batas minimum stok. Periksa halaman stok.',
-    time: '1 jam lalu',
-    type: 'warning',
-    read: false,
-    icon: <AlertTriangle className="w-4 h-4 text-orange-500" />,
-  },
-  {
-    id: '4',
-    title: 'Laporan Harian',
-    description: 'Ringkasan penjualan hari ini: 12 transaksi, total Rp 2.350.000.',
-    time: '2 jam lalu',
-    type: 'info',
-    read: true,
-    icon: <Clock className="w-4 h-4 text-blue-500" />,
-  },
-];
-
-const typeStyles: Record<string, string> = {
-  warning: 'bg-amber-50 dark:bg-amber-950/30',
-  success: 'bg-emerald-50 dark:bg-emerald-950/30',
-  info: 'bg-blue-50 dark:bg-blue-950/30',
+const typeIconMap: Record<string, React.ReactNode> = {
+  low_stock: <PackageX className="w-4 h-4 text-amber-500" />,
+  out_of_stock: <PackageX className="w-4 h-4 text-red-500" />,
+  sale_completed: <ShoppingCart className="w-4 h-4 text-emerald-500" />,
+  payment_received: <ShoppingCart className="w-4 h-4 text-emerald-500" />,
+  new_user: <UserPlus className="w-4 h-4 text-blue-500" />,
+  purchase_received: <Truck className="w-4 h-4 text-violet-500" />,
+  system: <Info className="w-4 h-4 text-blue-500" />,
 };
+
+const typeBgMap: Record<string, string> = {
+  low_stock: 'bg-amber-50 dark:bg-amber-950/30',
+  out_of_stock: 'bg-red-50 dark:bg-red-950/30',
+  sale_completed: 'bg-emerald-50 dark:bg-emerald-950/30',
+  payment_received: 'bg-emerald-50 dark:bg-emerald-950/30',
+  new_user: 'bg-blue-50 dark:bg-blue-950/30',
+  purchase_received: 'bg-violet-50 dark:bg-violet-950/30',
+  system: 'bg-blue-50 dark:bg-blue-950/30',
+};
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHr = Math.floor(diffMs / 3600000);
+  const diffDay = Math.floor(diffMs / 86400000);
+
+  if (diffMin < 1) return 'Baru saja';
+  if (diffMin < 60) return `${diffMin} menit lalu`;
+  if (diffHr < 24) return `${diffHr} jam lalu`;
+  if (diffDay < 7) return `${diffDay} hari lalu`;
+  return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+}
 
 interface AppHeaderProps {
   onOpenProfile?: () => void;
@@ -106,11 +98,37 @@ export default function AppHeader({ onOpenProfile }: AppHeaderProps) {
   const { user, logout } = useAuthStore();
   const { theme, setTheme } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(sampleNotifications);
   const [notifOpen, setNotifOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const title = pageTitles[currentPage] || 'Dashboard';
-  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const { data: notifData } = useQuery<{ data: DbNotification[]; unreadCount: number }>({
+    queryKey: ['notifications'],
+    queryFn: () => fetch('/api/notifications?limit=30').then((r) => r.json()),
+    refetchInterval: 15_000, // poll every 15s
+    staleTime: 10_000,
+  });
+
+  const notifications = notifData?.data ?? [];
+  const unreadCount = notifData?.unreadCount ?? 0;
+
+  const markAllRead = useCallback(async () => {
+    await fetch('/api/notifications/read-all', { method: 'PUT' });
+    queryClient.invalidateQueries({ queryKey: ['notifications'] });
+  }, [queryClient]);
+
+  const markAsRead = useCallback(async (id: string) => {
+    await fetch(`/api/notifications/${id}/read`, { method: 'PUT' });
+    queryClient.invalidateQueries({ queryKey: ['notifications'] });
+  }, [queryClient]);
+
+  // Re-check when popover opens
+  useEffect(() => {
+    if (notifOpen) {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    }
+  }, [notifOpen, queryClient]);
 
   const initials = user?.name
     ? user.name
@@ -122,19 +140,11 @@ export default function AppHeader({ onOpenProfile }: AppHeaderProps) {
     : '??';
 
   const roleLabel =
-    user?.role === 'cashir'
+    user?.role === 'cashier'
       ? 'Kasir'
       : user?.role === 'admin'
         ? 'Admin'
         : 'Super Admin';
-
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  };
-
-  const markAsRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-  };
 
   return (
     <header className="sticky top-0 z-30 flex items-center gap-2 sm:gap-3 h-14 sm:h-16 px-3 sm:px-4 lg:px-6 bg-background/80 backdrop-blur-md border-b shrink-0">
@@ -182,7 +192,7 @@ export default function AppHeader({ onOpenProfile }: AppHeaderProps) {
 
       {/* Right actions */}
       <div className="flex items-center gap-0.5 sm:gap-1">
-        {/* Notification bell */}
+        {/* Notification bell - REAL */}
         <Popover open={notifOpen} onOpenChange={setNotifOpen}>
           <PopoverTrigger asChild>
             <Button
@@ -193,8 +203,8 @@ export default function AppHeader({ onOpenProfile }: AppHeaderProps) {
             >
               <Bell className="w-[18px] h-[18px] sm:w-5 sm:h-5" />
               {unreadCount > 0 && (
-                <Badge className="absolute -top-0.5 -right-0.5 h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center p-0 text-[9px] sm:text-[10px] bg-emerald-600 border-0 rounded-full">
-                  {unreadCount}
+                <Badge className="absolute -top-0.5 -right-0.5 h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center p-0 text-[9px] sm:text-[10px] bg-emerald-600 border-0 rounded-full animate-pulse">
+                  {unreadCount > 99 ? '99+' : unreadCount}
                 </Badge>
               )}
             </Button>
@@ -242,32 +252,32 @@ export default function AppHeader({ onOpenProfile }: AppHeaderProps) {
                     <button
                       key={notif.id}
                       className={`w-full text-left px-4 py-3 transition-colors hover:bg-muted/50 ${
-                        notif.read ? 'opacity-70' : ''
+                        notif.isRead ? 'opacity-60' : ''
                       }`}
-                      onClick={() => markAsRead(notif.id)}
+                      onClick={() => !notif.isRead && markAsRead(notif.id)}
                     >
                       <div className="flex gap-3">
                         <div
                           className={`mt-0.5 shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                            typeStyles[notif.type]
+                            typeBgMap[notif.type] || 'bg-gray-50 dark:bg-gray-900'
                           }`}
                         >
-                          {notif.icon}
+                          {typeIconMap[notif.type] || <Info className="w-4 h-4 text-gray-500" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
-                            <p className={`text-sm font-medium leading-tight ${!notif.read ? 'text-foreground' : 'text-muted-foreground'}`}>
+                            <p className={`text-sm font-medium leading-tight ${!notif.isRead ? 'text-foreground' : 'text-muted-foreground'}`}>
                               {notif.title}
                             </p>
-                            {!notif.read && (
+                            {!notif.isRead && (
                               <span className="shrink-0 mt-1.5 w-2 h-2 rounded-full bg-emerald-500" />
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                            {notif.description}
+                            {notif.message}
                           </p>
                           <p className="text-[10px] text-muted-foreground/70 mt-1">
-                            {notif.time}
+                            {timeAgo(notif.createdAt)}
                           </p>
                         </div>
                       </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { checkAndNotifyLowStock, notifySaleCompleted } from '@/lib/notification-service'
 
 const listTransactionsSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -219,6 +220,13 @@ export async function POST(request: NextRequest) {
           data: { memberPoint: { increment: points } },
         })
       }
+    }
+
+    // Fire notifications for completed sales (non-blocking)
+    if (isCompleted && transactionData.type === 'sale') {
+      // Use fire-and-forget to not slow down the response
+      notifySaleCompleted(invoiceNumber, transactionData.grandTotal).catch(() => {})
+      checkAndNotifyLowStock().catch(() => {})
     }
 
     return NextResponse.json({ data: transaction }, { status: 201 })

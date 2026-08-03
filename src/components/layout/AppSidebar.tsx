@@ -13,7 +13,6 @@ import {
   Warehouse,
   BarChart3,
   Store,
-  Percent,
   GitBranch,
   UserCog,
   LogOut,
@@ -79,8 +78,7 @@ const navSections: NavSection[] = [
     title: 'Pengaturan',
     roles: ['super_admin', 'admin'],
     items: [
-      { label: 'Pengaturan Toko', page: 'settings', icon: Store },
-      { label: 'Pajak & Service Charge', page: 'tax-settings', icon: Percent },
+      { label: 'Pengaturan', page: 'settings', icon: Store },
     ],
   },
   {

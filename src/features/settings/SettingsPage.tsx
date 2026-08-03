@@ -1,793 +1,449 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import { toast } from 'sonner';
-import { Loader2, Store, Percent, Receipt, Save, Settings, Trash2, AlertTriangle, LogOut } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { useAuthStore } from '@/store';
+  User,
+  Store,
+  Users,
+  Printer,
+  Bot,
+  Bell,
+  Palette,
+  Cloud,
+  Gem,
+  HelpCircle,
+  ChevronRight,
+  Percent,
+  ArrowLeft,
+  Loader2,
+  Save,
+} from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
+import { useAuthStore, useNavStore, useSettingsStore } from '@/store';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import dynamic from 'next/dynamic';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// Lazy-load sub-pages
+const AccountSettings = dynamic(() => import('./AccountSettings'), { ssr: false });
+const StoreInfoSettings = dynamic(() => import('./StoreInfoSettings'), { ssr: false });
+const NotificationSettings = dynamic(() => import('./NotificationSettings'), { ssr: false });
+const AppearanceSettings = dynamic(() => import('./AppearanceSettings'), { ssr: false });
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type SettingsSubPage =
+  | null
+  | 'account'
+  | 'store-info'
+  | 'users'
+  | 'printer'
+  | 'ai-assistant'
+  | 'notifications'
+  | 'appearance'
+  | 'backup'
+  | 'subscription'
+  | 'help'
+  | 'tax';
+
+interface MenuItem {
+  id: SettingsSubPage;
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  badge?: string;
+  badgeVariant?: 'default' | 'secondary' | 'outline' | 'destructive';
+  external?: boolean;
+}
+
+// ─── Menu Items ───────────────────────────────────────────────────────────────
+
+const menuItems: MenuItem[] = [
+  {
+    id: 'account',
+    icon: <User className="w-5 h-5" />,
+    label: 'Akun',
+    description: 'Kelola profil dan keamanan',
+  },
+  {
+    id: 'store-info',
+    icon: <Store className="w-5 h-5" />,
+    label: 'Informasi Toko',
+    description: 'Logo, alamat, kontak',
+  },
+  {
+    id: 'users',
+    icon: <Users className="w-5 h-5" />,
+    label: 'Pengguna',
+    description: 'Role dan hak akses',
+  },
+  {
+    id: 'printer',
+    icon: <Printer className="w-5 h-5" />,
+    label: 'Printer',
+    description: 'Bluetooth & USB',
+    badge: 'Segera',
+    badgeVariant: 'outline',
+  },
+  {
+    id: 'ai-assistant',
+    icon: <Bot className="w-5 h-5" />,
+    label: 'AI Assistant',
+    description: 'Pengaturan AI',
+    badge: 'Segera',
+    badgeVariant: 'outline',
+  },
+  {
+    id: 'notifications',
+    icon: <Bell className="w-5 h-5" />,
+    label: 'Notifikasi',
+    description: 'Atur pemberitahuan',
+  },
+  {
+    id: 'appearance',
+    icon: <Palette className="w-5 h-5" />,
+    label: 'Tampilan',
+    description: 'Tema & bahasa',
+  },
+  {
+    id: 'backup',
+    icon: <Cloud className="w-5 h-5" />,
+    label: 'Backup',
+    description: 'Sinkronisasi data',
+    badge: 'Segera',
+    badgeVariant: 'outline',
+  },
+  {
+    id: 'subscription',
+    icon: <Gem className="w-5 h-5" />,
+    label: 'Langganan',
+    description: 'Paket dan pembayaran',
+    badge: 'Segera',
+    badgeVariant: 'outline',
+  },
+  {
+    id: 'help',
+    icon: <HelpCircle className="w-5 h-5" />,
+    label: 'Bantuan',
+    description: 'FAQ & dukungan',
+  },
+  {
+    id: 'tax',
+    icon: <Percent className="w-5 h-5" />,
+    label: 'Pajak & Service Charge',
+    description: 'Konfigurasi pajak dan biaya layanan',
+  },
+];
+
+// ─── Animation ───────────────────────────────────────────────────────────────
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.04 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: { opacity: 1, y: 0 },
+};
 
 const fadeIn = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.3 },
+  transition: { duration: 0.25 },
 };
 
-const timezoneOptions = [
-  { label: 'Asia/Jakarta (WIB)', value: 'Asia/Jakarta' },
-  { label: 'Asia/Makassar (WITA)', value: 'Asia/Makassar' },
-  { label: 'Asia/Jayapura (WIT)', value: 'Asia/Jayapura' },
-];
+// ─── Placeholder for coming-soon items ───────────────────────────────────────
 
-// ─── Section: Informasi Toko ─────────────────────────────────────────────────
+function ComingSoonPlaceholder({ label }: { label: string }) {
+  return (
+    <motion.div {...fadeIn} className="flex flex-col items-center justify-center min-h-[50vh] text-center px-4">
+      <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+        <HelpCircle className="w-8 h-8 text-muted-foreground" />
+      </div>
+      <h2 className="text-xl font-semibold mb-2">{label}</h2>
+      <p className="text-muted-foreground max-w-sm">
+        Fitur ini sedang dalam pengembangan dan akan segera tersedia.
+      </p>
+    </motion.div>
+  );
+}
 
-const storeInfoSchema = z.object({
-  store_name: z.string().min(1, 'Nama toko wajib diisi'),
-  store_address: z.string().default(''),
-  store_phone: z.string().default(''),
-  store_email: z.string().email('Email tidak valid').or(z.literal('')).default(''),
-  store_currency: z.string().default('Rp'),
-  store_timezone: z.string().default('Asia/Jakarta'),
-});
+// ─── Main Settings Page ──────────────────────────────────────────────────────
 
-type StoreInfoForm = z.infer<typeof storeInfoSchema>;
+export default function SettingsPage() {
+  const [subPage, setSubPage] = useState<SettingsSubPage>(null);
+  const { user } = useAuthStore();
+  const role = user?.role;
 
-function StoreInfoSection() {
+  const goBack = () => setSubPage(null);
+
+  // Filter items by role
+  const visibleItems = menuItems.filter((item) => {
+    if (item.id === 'users' && role !== 'super_admin') return false;
+    return true;
+  });
+
+  return (
+    <AnimatePresence mode="wait">
+      {subPage === null ? (
+        // ── Menu Grid ──────────────────────────────────────────────────────
+        <motion.div
+          key="menu"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          exit={{ opacity: 0, y: -8 }}
+          className="p-4 sm:p-6 space-y-6"
+        >
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold">⚙️ Pengaturan</h2>
+            <p className="text-sm text-muted-foreground mt-1">Kelola preferensi dan konfigurasi aplikasi</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {visibleItems.map((item) => (
+              <motion.div key={item.id} variants={itemVariants}>
+                <Card
+                  className="group cursor-pointer hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800 transition-all duration-200"
+                  onClick={() => setSubPage(item.id)}
+                >
+                  <div className="p-4 sm:p-5 flex items-center gap-4">
+                    <div className="shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-950/70 transition-colors">
+                      {item.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm sm:text-base">{item.label}</span>
+                        {item.badge && (
+                          <Badge variant={item.badgeVariant || 'outline'} className="text-[10px] px-1.5 py-0 h-4">
+                            {item.badge}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.description}</p>
+                    </div>
+                    <ChevronRight className="shrink-0 w-4 h-4 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
+                  </div>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      ) : (
+        // ── Sub Pages ───────────────────────────────────────────────────────
+        <motion.div
+          key={subPage}
+          {...fadeIn}
+          exit={{ opacity: 0, x: 20 }}
+          className="p-4 sm:p-6"
+        >
+          {/* Back button */}
+          <button
+            onClick={goBack}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Kembali ke Pengaturan
+          </button>
+
+          {subPage === 'account' && <AccountSettings onBack={goBack} />}
+          {subPage === 'store-info' && <StoreInfoSettings onBack={goBack} />}
+          {subPage === 'notifications' && <NotificationSettings onBack={goBack} />}
+          {subPage === 'appearance' && <AppearanceSettings onBack={goBack} />}
+          {subPage === 'users' && <UsersRedirect />}
+          {subPage === 'printer' && <ComingSoonPlaceholder label="🖨️ Printer" />}
+          {subPage === 'ai-assistant' && <ComingSoonPlaceholder label="🤖 AI Assistant" />}
+          {subPage === 'backup' && <ComingSoonPlaceholder label="☁️ Backup" />}
+          {subPage === 'subscription' && <ComingSoonPlaceholder label="💎 Langganan" />}
+          {subPage === 'help' && <ComingSoonPlaceholder label="❓ Bantuan" />}
+          {subPage === 'tax' && <TaxSettingsInline onBack={goBack} />}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ─── Users Redirect ────────────────────────────────────────────────────────
+
+function UsersRedirect() {
+  const { setCurrentPage } = useNavStore();
+  setCurrentPage('users');
+  return null;
+}
+
+// ─── Tax Settings (inline, simplified) ────────────────────────────────────────
+
+function TaxSettingsInline({ onBack }: { onBack: () => void }) {
+  const { taxConfig, setTaxConfig, serviceChargeConfig, setServiceChargeConfig } = useSettingsStore();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => {
-      const res = await fetch('/api/settings');
-      if (!res.ok) throw new Error('Gagal memuat pengaturan');
-      const json = await res.json();
-      return json.data as Record<string, string>;
-    },
-  });
+  const [taxEnabled, setTaxEnabled] = useState(taxConfig.isEnabled);
+  const [taxPercent, setTaxPercent] = useState(String(taxConfig.percentage));
+  const [taxMode, setTaxMode] = useState(taxConfig.mode);
+  const [scEnabled, setScEnabled] = useState(serviceChargeConfig.isEnabled);
+  const [scPercent, setScPercent] = useState(String(serviceChargeConfig.percentage));
 
-  const form = useForm<StoreInfoForm>({
-    resolver: zodResolver(storeInfoSchema),
-    defaultValues: {
-      store_name: '',
-      store_address: '',
-      store_phone: '',
-      store_email: '',
-      store_currency: 'Rp',
-      store_timezone: 'Asia/Jakarta',
-    },
-    values: data
-      ? {
-          store_name: data.store_name || '',
-          store_address: data.store_address || '',
-          store_phone: data.store_phone || '',
-          store_email: data.store_email || '',
-          store_currency: data.store_currency || 'Rp',
-          store_timezone: data.store_timezone || 'Asia/Jakarta',
-        }
-      : undefined,
-  });
-
-  const mutation = useMutation({
-    mutationFn: async (values: StoreInfoForm) => {
+  const saveMutation = useMutation({
+    mutationFn: async (settings: Record<string, string>) => {
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: values }),
+        body: JSON.stringify({ settings }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Gagal menyimpan');
-      return json;
+      if (!res.ok) throw new Error('Gagal menyimpan');
+      return res.json();
     },
     onSuccess: () => {
-      toast.success('Pengaturan toko berhasil disimpan');
+      setTaxConfig({
+        isEnabled: taxEnabled,
+        percentage: parseFloat(taxPercent),
+        mode: taxMode as 'include' | 'exclude',
+        applyToAll: true,
+      });
+      setServiceChargeConfig({
+        isEnabled: scEnabled,
+        percentage: parseFloat(scPercent),
+      });
       queryClient.invalidateQueries({ queryKey: ['settings'] });
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
-  const onSubmit = (values: StoreInfoForm) => mutation.mutate(values);
-
-  return (
-    <motion.div {...fadeIn}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Store className="h-5 w-5" />
-            Informasi Toko
-          </CardTitle>
-          <CardDescription>
-            Kelola informasi dasar toko Anda
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="space-y-1.5">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-9 w-full" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="store_name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nama Toko</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Masukkan nama toko" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="store_address"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Alamat</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Masukkan alamat toko" rows={3} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="store_phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Telepon</FormLabel>
-                        <FormControl>
-                          <Input placeholder="08xxxxxxxxxx" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="store_email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input type="email" placeholder="email@toko.com" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="store_currency"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Mata Uang</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Rp" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="store_timezone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Zona Waktu</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Pilih zona waktu" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {timezoneOptions.map((tz) => (
-                              <SelectItem key={tz.value} value={tz.value}>
-                                {tz.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <Separator />
-                <Button type="submit" disabled={mutation.isPending}>
-                  {mutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  Simpan Pengaturan Toko
-                </Button>
-              </form>
-            </Form>
-          )}
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-// ─── Section: Pajak ───────────────────────────────────────────────────────────
-
-const taxSchema = z.object({
-  isEnabled: z.boolean(),
-  percentage: z.coerce.number().min(0).max(100),
-  mode: z.enum(['include', 'exclude']),
-  applyToAll: z.boolean(),
-});
-
-type TaxForm = z.infer<typeof taxSchema>;
-
-function TaxSection() {
-  const queryClient = useQueryClient();
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['settings-tax'],
-    queryFn: async () => {
-      const res = await fetch('/api/settings/tax');
-      if (!res.ok) throw new Error('Gagal memuat pengaturan pajak');
-      const json = await res.json();
-      return json.data;
-    },
-  });
-
-  const form = useForm<TaxForm>({
-    resolver: zodResolver(taxSchema),
-    defaultValues: {
-      isEnabled: false,
-      percentage: 11,
-      mode: 'exclude',
-      applyToAll: true,
-    },
-    values: data
-      ? {
-          isEnabled: data.isEnabled ?? false,
-          percentage: data.percentage ?? 11,
-          mode: data.mode ?? 'exclude',
-          applyToAll: data.applyToAll ?? true,
-        }
-      : undefined,
-  });
-
-  const mutation = useMutation({
-    mutationFn: async (values: TaxForm) => {
-      const res = await fetch('/api/settings/tax', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Gagal menyimpan');
-      return json;
-    },
-    onSuccess: () => {
       toast.success('Pengaturan pajak berhasil disimpan');
-      queryClient.invalidateQueries({ queryKey: ['settings-tax'] });
     },
-    onError: (err) => toast.error(err.message),
+    onError: () => toast.error('Gagal menyimpan pengaturan'),
   });
 
-  const onSubmit = (values: TaxForm) => mutation.mutate(values);
-
-  const watchEnabled = form.watch('isEnabled');
-
-  return (
-    <motion.div {...fadeIn}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Percent className="h-5 w-5" />
-            Pengaturan Pajak
-          </CardTitle>
-          <CardDescription>
-            Konfigurasi pajak untuk transaksi
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="space-y-1.5">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-9 w-full" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="isEnabled"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base">Pajak Aktif</FormLabel>
-                        <p className="text-sm text-muted-foreground">
-                          Aktifkan perhitungan pajak pada transaksi
-                        </p>
-                      </div>
-                      <FormControl>
-                        <Switch checked={field.value} onCheckedChange={field.onChange} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <div className={watchEnabled ? '' : 'pointer-events-none opacity-50'}>
-                  <FormField
-                    control={form.control}
-                    name="percentage"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Persentase Pajak (%)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={0.1}
-                            placeholder="11"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className="mt-4">
-                    <FormField
-                      control={form.control}
-                      name="mode"
-                      render={({ field }) => (
-                        <FormItem className="space-y-3">
-                          <FormLabel>Mode Pajak</FormLabel>
-                          <FormControl>
-                            <RadioGroup
-                              onValueChange={field.onChange}
-                              value={field.value}
-                              className="flex flex-col gap-3 sm:flex-row"
-                            >
-                              <Label
-                                htmlFor="exclude"
-                                className={[
-                                  'flex flex-1 cursor-pointer items-center gap-3 rounded-lg border p-4 transition-colors',
-                                  field.value === 'exclude'
-                                    ? 'border-primary bg-primary/5'
-                                    : 'hover:bg-muted',
-                                ].join(' ')}
-                              >
-                                <RadioGroupItem value="exclude" id="exclude" />
-                                <div>
-                                  <p className="font-medium">Exclude Tax</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Pajak ditambahkan di atas harga
-                                  </p>
-                                </div>
-                              </Label>
-                              <Label
-                                htmlFor="include"
-                                className={[
-                                  'flex flex-1 cursor-pointer items-center gap-3 rounded-lg border p-4 transition-colors',
-                                  field.value === 'include'
-                                    ? 'border-primary bg-primary/5'
-                                    : 'hover:bg-muted',
-                                ].join(' ')}
-                              >
-                                <RadioGroupItem value="include" id="include" />
-                                <div>
-                                  <p className="font-medium">Include Tax</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Harga sudah termasuk pajak
-                                  </p>
-                                </div>
-                              </Label>
-                            </RadioGroup>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <div className="mt-4">
-                    <FormField
-                      control={form.control}
-                      name="applyToAll"
-                      render={({ field }) => (
-                        <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                          <div className="space-y-0.5">
-                            <FormLabel className="text-base">Terapkan ke Semua Produk</FormLabel>
-                            <p className="text-sm text-muted-foreground">
-                              Otomatis terapkan pajak ke semua produk
-                            </p>
-                          </div>
-                          <FormControl>
-                            <Switch checked={field.value} onCheckedChange={field.onChange} />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                </div>
-
-                <Separator />
-                <Button type="submit" disabled={mutation.isPending}>
-                  {mutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  Simpan Pengaturan Pajak
-                </Button>
-              </form>
-            </Form>
-          )}
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-// ─── Section: Service Charge ──────────────────────────────────────────────────
-
-const serviceChargeSchema = z.object({
-  isEnabled: z.boolean(),
-  percentage: z.coerce.number().min(0).max(100),
-});
-
-type ServiceChargeForm = z.infer<typeof serviceChargeSchema>;
-
-function ServiceChargeSection() {
-  const queryClient = useQueryClient();
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['settings-service-charge'],
-    queryFn: async () => {
-      const res = await fetch('/api/settings/service-charge');
-      if (!res.ok) throw new Error('Gagal memuat pengaturan service charge');
-      const json = await res.json();
-      return json.data;
-    },
-  });
-
-  const form = useForm<ServiceChargeForm>({
-    resolver: zodResolver(serviceChargeSchema),
-    defaultValues: {
-      isEnabled: false,
-      percentage: 5,
-    },
-    values: data
-      ? {
-          isEnabled: data.isEnabled ?? false,
-          percentage: data.percentage ?? 5,
-        }
-      : undefined,
-  });
-
-  const mutation = useMutation({
-    mutationFn: async (values: ServiceChargeForm) => {
-      const res = await fetch('/api/settings/service-charge', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Gagal menyimpan');
-      return json;
-    },
-    onSuccess: () => {
-      toast.success('Pengaturan service charge berhasil disimpan');
-      queryClient.invalidateQueries({ queryKey: ['settings-service-charge'] });
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
-  const onSubmit = (values: ServiceChargeForm) => mutation.mutate(values);
-
-  const watchEnabled = form.watch('isEnabled');
-
-  return (
-    <motion.div {...fadeIn}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Receipt className="h-5 w-5" />
-            Pengaturan Service Charge
-          </CardTitle>
-          <CardDescription>
-            Konfigurasi biaya layanan untuk transaksi
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="space-y-1.5">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-9 w-full" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="isEnabled"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base">Service Charge Aktif</FormLabel>
-                        <p className="text-sm text-muted-foreground">
-                          Aktifkan biaya layanan pada transaksi
-                        </p>
-                      </div>
-                      <FormControl>
-                        <Switch checked={field.value} onCheckedChange={field.onChange} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <div className={watchEnabled ? '' : 'pointer-events-none opacity-50'}>
-                  <FormField
-                    control={form.control}
-                    name="percentage"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Persentase Service Charge (%)</FormLabel>
-                        <div className="flex gap-2">
-                          <FormControl className="flex-1">
-                            <Input
-                              type="number"
-                              min={0}
-                              max={100}
-                              step={0.5}
-                              placeholder="5"
-                              {...field}
-                            />
-                          </FormControl>
-                        </div>
-                        <div className="mt-2 flex gap-2">
-                          {[5, 10, 15].map((pct) => (
-                            <Button
-                              key={pct}
-                              type="button"
-                              size="sm"
-                              variant={field.value === pct ? 'default' : 'outline'}
-                              onClick={() => form.setValue('percentage', pct)}
-                            >
-                              {pct}%
-                            </Button>
-                          ))}
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <Separator />
-                <Button type="submit" disabled={mutation.isPending}>
-                  {mutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  Simpan Pengaturan Service Charge
-                </Button>
-              </form>
-            </Form>
-          )}
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-// ─── Section: Reset Data ────────────────────────────────────────────────────
-
-function ResetDataSection() {
-  const queryClient = useQueryClient();
-  const { user, logout } = useAuthStore();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmText, setConfirmText] = useState('');
-
-  const resetMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('/api/reset', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preserveUserId: user?.id }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Gagal mereset data');
-      return json;
-    },
-    onSuccess: () => {
-      toast.success('Semua data berhasil direset');
-      queryClient.invalidateQueries();
-      // Log out and redirect to login
-      setTimeout(() => {
-        localStorage.removeItem('pos_user');
-        localStorage.removeItem('pos_remember');
-        logout();
-      }, 1000);
-    },
-    onError: (err) => {
-      toast.error(err.message);
-    },
-  });
-
-  const handleReset = () => {
-    if (confirmText !== 'RESET') return;
-    resetMutation.mutate();
+  const handleSave = () => {
+    saveMutation.mutate({
+      tax_enabled: String(taxEnabled),
+      tax_percentage: taxPercent,
+      tax_mode: taxMode,
+      service_charge_enabled: String(scEnabled),
+      service_charge_percentage: scPercent,
+    });
   };
 
   return (
-    <motion.div {...fadeIn}>
-      <Card className="border-destructive/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-destructive">
-            <Trash2 className="h-5 w-5" />
-            Reset Semua Data
-          </CardTitle>
-          <CardDescription>
-            Hapus semua data termasuk produk, transaksi, pelanggan, dan pengaturan. Tindakan ini tidak dapat dibatalkan.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 mb-4">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-destructive">Peringatan!</p>
-                <p className="text-sm text-muted-foreground">
-                  Semua data berikut akan dihapus secara permanen:
-                </p>
-                <ul className="mt-2 text-sm text-muted-foreground list-disc list-inside space-y-1">
-                  <li>Semua transaksi dan item transaksi</li>
-                  <li>Semua produk dan kategori</li>
-                  <li>Semua pelanggan dan supplier</li>
-                  <li>Semua pembelian dan penyesuaian stok</li>
-                  <li>Semua cabang (kecuali data pengguna saat ini)</li>
-                  <li>Semua pengaturan toko, pajak, dan service charge</li>
-                </ul>
-              </div>
-            </div>
-          </div>
+    <motion.div {...fadeIn} className="max-w-2xl space-y-6">
+      <div>
+        <h2 className="text-xl font-bold">📊 Pajak & Service Charge</h2>
+        <p className="text-sm text-muted-foreground mt-1">Konfigurasi pajak dan biaya layanan</p>
+      </div>
 
-          <Dialog open={confirmOpen} onOpenChange={(open) => {
-            setConfirmOpen(open);
-            if (!open) setConfirmText('');
-          }}>
-            <DialogTrigger asChild>
-              <Button variant="destructive" className="gap-2">
-                <Trash2 className="h-4 w-4" />
-                Reset Semua Data
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-destructive">
-                  <AlertTriangle className="h-5 w-5" />
-                  Konfirmasi Reset Data
-                </DialogTitle>
-                <DialogDescription>
-                  Tindakan ini akan menghapus SEMUA data dari sistem. Akun Anda akan tetap tersimpan sebagai Super Admin, tetapi semua data lainnya akan hilang secara permanen.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 py-2">
-                <p className="text-sm text-muted-foreground">
-                  Ketik <span className="font-mono font-bold text-destructive">RESET</span> untuk mengkonfirmasi:
-                </p>
+      {/* Tax Section */}
+      <Card className="p-4 sm:p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold">Pajak (PPN)</h3>
+            <p className="text-xs text-muted-foreground">Aktifkan pajak untuk transaksi</p>
+          </div>
+          <div
+            className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${
+              taxEnabled ? 'bg-emerald-600' : 'bg-muted'
+            }`}
+            onClick={() => setTaxEnabled(!taxEnabled)}
+          >
+            <div
+              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                taxEnabled ? 'translate-x-5' : ''
+              }`}
+            />
+          </div>
+        </div>
+
+        {taxEnabled && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm">Persentase Pajak (%)</Label>
                 <Input
-                  value={confirmText}
-                  onChange={(e) => setConfirmText(e.target.value)}
-                  placeholder="Ketik RESET di sini"
-                  className="font-mono"
+                  type="number"
+                  value={taxPercent}
+                  onChange={(e) => setTaxPercent(e.target.value)}
+                  min={0}
+                  max={100}
                 />
               </div>
-              <DialogFooter className="gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setConfirmOpen(false);
-                    setConfirmText('');
-                  }}
-                >
-                  Batal
-                </Button>
-                <Button
-                  variant="destructive"
-                  disabled={confirmText !== 'RESET' || resetMutation.isPending}
-                  onClick={handleReset}
-                >
-                  {resetMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Mereset...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Ya, Reset Semua Data
-                    </>
-                  )}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </CardContent>
+              <div className="space-y-2">
+                <Label className="text-sm">Mode Pajak</Label>
+                <div className="flex gap-2">
+                  {['exclude', 'include'].map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setTaxMode(mode as 'include' | 'exclude')}
+                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                        taxMode === mode
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
+                          : 'border-border hover:bg-muted'
+                      }`}
+                    >
+                      {mode === 'exclude' ? 'Eksternal' : 'Internal'}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {taxMode === 'exclude' ? 'Pajak ditambahkan di atas harga' : 'Pajak sudah termasuk dalam harga'}
+                </p>
+              </div>
+            </div>
+          </>
+        )}
       </Card>
+
+      {/* Service Charge Section */}
+      <Card className="p-4 sm:p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold">Service Charge</h3>
+            <p className="text-xs text-muted-foreground">Biaya layanan tambahan</p>
+          </div>
+          <div
+            className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${
+              scEnabled ? 'bg-emerald-600' : 'bg-muted'
+            }`}
+            onClick={() => setScEnabled(!scEnabled)}
+          >
+            <div
+              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                scEnabled ? 'translate-x-5' : ''
+              }`}
+            />
+          </div>
+        </div>
+
+        {scEnabled && (
+          <div className="space-y-2">
+            <Label className="text-sm">Persentase Service Charge (%)</Label>
+            <Input
+              type="number"
+              value={scPercent}
+              onChange={(e) => setScPercent(e.target.value)}
+              min={0}
+              max={100}
+              className="max-w-xs"
+            />
+          </div>
+        )}
+      </Card>
+
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSave}
+          disabled={saveMutation.isPending}
+          className="bg-emerald-600 hover:bg-emerald-700"
+        >
+          {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+          <Save className="w-4 h-4 mr-2" />
+          Simpan
+        </Button>
+      </div>
     </motion.div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
-export default function SettingsPage() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Settings className="h-6 w-6" />
-          Pengaturan
-        </h1>
-        <p className="text-muted-foreground">
-          Kelola pengaturan toko, pajak, dan service charge
-        </p>
-      </div>
-
-      <div className="space-y-6">
-        <StoreInfoSection />
-        <TaxSection />
-        <ServiceChargeSection />
-        <ResetDataSection />
-      </div>
-    </div>
   );
 }

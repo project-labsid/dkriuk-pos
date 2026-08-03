@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { checkAndNotifyLowStock, notifyPurchaseReceived } from '@/lib/notification-service'
 
 const listPurchasesSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -154,6 +155,9 @@ export async function POST(request: NextRequest) {
           },
         })
       }
+      // Fire notifications (non-blocking)
+      notifyPurchaseReceived(invoiceNumber, purchaseData.totalAmount).catch(() => {})
+      checkAndNotifyLowStock().catch(() => {})
     }
 
     return NextResponse.json({ data: purchase }, { status: 201 })
