@@ -165,8 +165,9 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Dashboard error:', error)
+    const message = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      { error: 'Terjadi kesalahan server' },
+      { error: 'Terjadi kesalahan server', details: message },
       { status: 500 }
     )
   }
