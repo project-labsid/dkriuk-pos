@@ -61,6 +61,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (typeof window !== 'undefined') {
       localStorage.setItem('pos_user', JSON.stringify(user));
     }
+    // Redirect cashier to POS page on login
+    if (user.role === 'cashir') {
+      useNavStore.getState().setCurrentPage('pos');
+    }
     set({ user, isAuthenticated: true });
   },
   logout: () => {

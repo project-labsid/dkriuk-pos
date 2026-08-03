@@ -5,8 +5,9 @@ import { useAuthStore, useNavStore, useSettingsStore } from '@/store';
 import LoginPage from '@/features/auth/LoginPage';
 import AppLayout from '@/components/layout/AppLayout';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ShieldX } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import type { PageName } from '@/types';
+import type { PageName, UserRole } from '@/types';
 
 // Dynamic imports for code splitting
 const DashboardPage = dynamic(() => import('@/features/dashboard/DashboardPage'), {
@@ -62,6 +63,31 @@ const UsersPage = dynamic(() => import('@/features/users/UsersPage'), {
   ssr: false,
 });
 
+// Role-based page access control
+const pageAccess: Record<PageName, UserRole[]> = {
+  'dashboard':    ['super_admin', 'admin'],
+  'pos':          ['super_admin', 'admin', 'cashir'],
+  'products':     ['super_admin', 'admin'],
+  'categories':   ['super_admin', 'admin'],
+  'suppliers':    ['super_admin', 'admin'],
+  'customers':    ['super_admin', 'admin'],
+  'transactions': ['super_admin', 'admin', 'cashir'],
+  'purchases':    ['super_admin', 'admin'],
+  'stock':        ['super_admin', 'admin'],
+  'reports':      ['super_admin', 'admin'],
+  'settings':     ['super_admin', 'admin'],
+  'tax-settings': ['super_admin', 'admin'],
+  'branches':     ['super_admin'],
+  'users':        ['super_admin'],
+};
+
+// Default page for each role when redirected
+const defaultPageForRole: Record<UserRole, PageName> = {
+  'super_admin': 'dashboard',
+  'admin': 'dashboard',
+  'cashir': 'pos',
+};
+
 function PageSkeleton() {
   return (
     <div className="p-6 space-y-6">
@@ -76,9 +102,23 @@ function PageSkeleton() {
   );
 }
 
+function AccessDenied() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+      <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+        <ShieldX className="w-8 h-8 text-destructive" />
+      </div>
+      <h2 className="text-xl font-semibold mb-2">Akses Ditolak</h2>
+      <p className="text-muted-foreground max-w-sm">
+        Anda tidak memiliki izin untuk mengakses halaman ini. Hubungi administrator untuk informasi lebih lanjut.
+      </p>
+    </div>
+  );
+}
+
 export default function Home() {
   const { isAuthenticated, user } = useAuthStore();
-  const { currentPage } = useNavStore();
+  const { currentPage, setCurrentPage } = useNavStore();
   const { setStoreSettings } = useSettingsStore();
   const [mounted, setMounted] = useState(false);
 
@@ -117,6 +157,16 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [isAuthenticated, setStoreSettings]);
 
+  // Role-based page protection: redirect if user doesn't have access
+  useEffect(() => {
+    if (!user || !mounted) return;
+    const role = user.role as UserRole;
+    const allowed = pageAccess[currentPage];
+    if (allowed && !allowed.includes(role)) {
+      setCurrentPage(defaultPageForRole[role] || 'pos');
+    }
+  }, [user, mounted, currentPage, setCurrentPage]);
+
   // Show nothing during hydration
   if (!mounted) {
     return (
@@ -135,10 +185,19 @@ export default function Home() {
     return <LoginPage />;
   }
 
+  // Check page access
+  const role = user.role as UserRole;
+  const allowed = pageAccess[currentPage];
+  const hasAccess = allowed && allowed.includes(role);
+
   // Render the app layout with the correct page
   return (
     <AppLayout>
-      <PageContent page={currentPage} />
+      {hasAccess ? (
+        <PageContent page={currentPage} />
+      ) : (
+        <AccessDenied />
+      )}
     </AppLayout>
   );
 }

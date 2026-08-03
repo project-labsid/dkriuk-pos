@@ -49,6 +49,12 @@ const bottomNavItems: MobileNavItem[] = [
   { label: 'Laporan', page: 'reports', icon: BarChart3 },
 ];
 
+// Cashier only sees POS and Transaksi in bottom nav
+const cashierBottomItems: MobileNavItem[] = [
+  { label: 'Kasir', page: 'pos', icon: ShoppingCart },
+  { label: 'Riwayat', page: 'transactions', icon: Receipt },
+];
+
 const moreSections: MobileNavSection[] = [
   {
     title: 'Master Data',
@@ -93,13 +99,19 @@ export default function MobileNav() {
 
   const role = (user?.role || 'cashir') as UserRole;
 
-  const visibleBottomItems = bottomNavItems.filter((item) => {
-    if (item.page === 'reports' && role === 'cashir') return false;
-    if (item.page === 'products' && role === 'cashir') return false;
+  const visibleBottomItems = role === 'cashir' ? cashierBottomItems : bottomNavItems.filter((item) => {
     return true;
   });
 
-  const filteredMoreSections = moreSections.filter((s) => s.roles.includes(role));
+  const filteredMoreSections = moreSections
+    .filter((s) => s.roles.includes(role))
+    .map((s) => {
+      // Cashier: only show Riwayat Transaksi in Transaksi section
+      if (s.title === 'Transaksi' && role === 'cashir') {
+        return { ...s, items: s.items.filter(i => i.page === 'transactions') };
+      }
+      return s;
+    });
 
   function handleNav(page: PageName) {
     setCurrentPage(page);
@@ -135,13 +147,16 @@ export default function MobileNav() {
               </button>
             );
           })}
-          <button
-            onClick={() => setMoreOpen(true)}
-            className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <MoreHorizontal className="w-5 h-5" />
-            <span className="text-[10px] font-medium leading-tight">Lainnya</span>
-          </button>
+          {/* Only show More button if there are additional menu sections */}
+          {filteredMoreSections.length > 0 && (
+            <button
+              onClick={() => setMoreOpen(true)}
+              className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+              <span className="text-[10px] font-medium leading-tight">Lainnya</span>
+            </button>
+          )}
         </div>
       </nav>
 

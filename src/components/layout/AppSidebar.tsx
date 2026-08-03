@@ -31,6 +31,7 @@ interface NavItem {
   label: string;
   page: PageName;
   icon: React.ElementType;
+  roles?: UserRole[];
 }
 
 interface NavSection {
@@ -44,7 +45,7 @@ const navSections: NavSection[] = [
     title: 'Menu Utama',
     roles: ['super_admin', 'admin', 'cashir'],
     items: [
-      { label: 'Dashboard', page: 'dashboard', icon: LayoutDashboard },
+      { label: 'Dashboard', page: 'dashboard', icon: LayoutDashboard, roles: ['super_admin', 'admin'] },
       { label: 'Kasir (POS)', page: 'pos', icon: ShoppingCart },
     ],
   },
@@ -125,13 +126,26 @@ export default function AppSidebar() {
     for (const section of navSections) {
       if (section.roles.includes(role)) {
         // Special handling: cashier only sees certain items in Transaksi
+        // Filter items that have specific role restrictions
+        const filteredItems = section.items.filter(item => {
+          if (item.roles && !item.roles.includes(role)) return false;
+          return true;
+        });
+
+        // Skip empty sections
+        if (filteredItems.length === 0) continue;
+
+        // Special handling: cashier only sees certain items in Transaksi
         if (section.title === 'Transaksi' && role === 'cashir') {
           sections.push({
             ...section,
             items: cashierTransaksiItems,
           });
         } else {
-          sections.push(section);
+          sections.push({
+            ...section,
+            items: filteredItems,
+          });
         }
       }
     }
