@@ -136,6 +136,15 @@ const scaleIn = {
   transition: { duration: 0.2 },
 };
 
+// ─── Auto-printer helper component ──────────────────────────────────────────
+function AutoPrinter({ onPrint }: { onPrint: () => void }) {
+  useEffect(() => {
+    const timer = setTimeout(onPrint, 800);
+    return () => clearTimeout(timer);
+  }, [onPrint]);
+  return null;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function POSPage() {
@@ -158,6 +167,16 @@ export default function POSPage() {
   const cartDiscountTotal = useCartStore((s) => s.discountTotal);
   const cartNotesVal = useCartStore((s) => s.notes);
   const { taxConfig, serviceChargeConfig, storeName, storeAddress, storePhone } = useSettingsStore();
+
+  // Printer settings
+  const [printerConfig, setPrinterConfig] = useState<{
+    paperWidth: string;
+    autoPrint: boolean;
+    copies: number;
+    headerText: string;
+    footerText: string;
+    showLogo: boolean;
+  }>({ paperWidth: '80', autoPrint: false, copies: 1, headerText: '', footerText: '', showLogo: true });
 
   // Reassemble cart object for convenience
   const cart = { items, discountTotal: cartDiscountTotal, notes: cartNotesVal, customerId: cartCustomerId, addItem: cartAddItem, removeItem: cartRemoveItem, updateQuantity: cartUpdateQuantity, updateItemDiscount: cartUpdateItemDiscount, updateItemNotes: cartUpdateItemNotes, setCustomerId: cartSetCustomerId, setDiscountTotal: cartSetDiscountTotal, setNotes: cartSetNotes, setHeld: cartSetHeld, clearCart: cartClear };
@@ -192,6 +211,28 @@ export default function POSPage() {
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   // ─── Data Fetching ───────────────────────────────────────────────────────
+
+  // Fetch printer settings
+  useQuery({
+    queryKey: ['printer-settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings/printer');
+      const json = await res.json();
+      const d = json.data;
+      if (d) {
+        setPrinterConfig({
+          paperWidth: d.printer_paper_width || '80',
+          autoPrint: d.printer_auto_print === 'true',
+          copies: parseInt(d.printer_copies) || 1,
+          headerText: d.printer_header_text || '',
+          footerText: d.printer_footer_text || '',
+          showLogo: d.printer_show_logo !== 'false',
+        });
+      }
+      return d;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   const { data: categoriesRaw = [], isLoading: categoriesLoading } = useQuery<Category[]>({
     queryKey: ['categories'],
@@ -341,6 +382,10 @@ export default function POSPage() {
         resetPaymentState();
         queryClient.invalidateQueries({ queryKey: ['pos-products'] });
         queryClient.invalidateQueries({ queryKey: ['held-transactions'] });
+        // Invalidate report queries so Laporan is always up-to-date
+        queryClient.invalidateQueries({ queryKey: ['reports'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['transactions'] });
       }, 1200);
     },
     onError: (error: Error) => {
@@ -585,14 +630,16 @@ export default function POSPage() {
     const el = document.getElementById('receipt-print');
     if (!el) return;
     const html = el.innerHTML;
-    const win = window.open('', '_blank', 'width=320,height=600');
-    if (!win) { toast.error('Popup diblokir, izinkan popup'); return; }
-    win.document.write(`<!DOCTYPE html>
+    const maxW = printerConfig.paperWidth === '58' ? 224 : 320;
+    const doPrint = (attempt: number) => {
+      const win = window.open('', '_blank', `width=${maxW},height=600`);
+      if (!win) { toast.error('Popup diblokir, izinkan popup'); return; }
+      win.document.write(`<!DOCTYPE html>
 <html><head><title>Struk - ${storeName || 'Dkriuk'}</title>
 <style>
-  @page { size: 80mm auto; margin: 0; }
+  @page { size: ${printerConfig.paperWidth}mm auto; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Courier New', monospace; font-size: 12px; padding: 12px; max-width: 320px; margin: 0 auto; color: #000; }
+  body { font-family: 'Courier New', monospace; font-size: 12px; padding: 12px; max-width: ${maxW}px; margin: 0 auto; color: #000; }
   img { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto 8px; border-radius: 8px; }
   .text-center { text-align: center; }
   .font-bold { font-weight: bold; }
@@ -618,9 +665,17 @@ export default function POSPage() {
   .text-center.text-\[9px\] { text-align: center; font-size: 9px; color: #888; }
   @media print { body { padding: 8px; } }
 </style></head><body>${html}</body></html>`);
-    win.document.close();
-    Promise.all(Array.from(win.document.querySelectorAll('img')).map(i => i.complete ? Promise.resolve() : new Promise(r => { i.onload = r; i.onerror = r; }))).then(() => win.print());
-  }, [storeName]);
+      win.document.close();
+      Promise.all(Array.from(win.document.querySelectorAll('img')).map(i => i.complete ? Promise.resolve() : new Promise(r => { i.onload = r; i.onerror = r; }))).then(() => {
+        win.print();
+        const remaining = printerConfig.copies - 1;
+        if (remaining > 0 && attempt < remaining) {
+          setTimeout(() => doPrint(attempt + 1), 500);
+        }
+      });
+    };
+    doPrint(0);
+  }, [storeName, printerConfig]);
 
   // ─── Filtered Products ───────────────────────────────────────────────────
 
@@ -1565,13 +1620,21 @@ export default function POSPage() {
       </Dialog>
 
       {/* ═══ RECEIPT DIALOG ═══ */}
+      {/* Auto-print effect */}
+      {receiptDialogOpen && printerConfig.autoPrint && lastTransaction && (
+        <AutoPrinter key={lastTransaction.id} onPrint={handlePrintReceipt} />
+      )}
+
       <Dialog open={receiptDialogOpen} onOpenChange={setReceiptDialogOpen}>
         <DialogContent className="sm:max-w-sm p-0 overflow-hidden" showCloseButton={false}>
           {/* Thermal receipt style */}
           <div id="receipt-print" className="bg-white text-black p-6 font-mono text-xs">
             {/* Store Info */}
             <div className="text-center mb-4">
-              <img src="/logo.png" alt="Logo" style={{ width: 64, height: 64, objectFit: 'contain', display: 'block', margin: '0 auto 8px', borderRadius: 8 }} />
+              {printerConfig.showLogo && <img src="/logo.png" alt="Logo" style={{ width: 64, height: 64, objectFit: 'contain', display: 'block', margin: '0 auto 8px', borderRadius: 8 }} />}
+              {printerConfig.headerText && (
+                <p className="text-[10px] text-gray-600 mb-1 font-semibold">{printerConfig.headerText}</p>
+              )}
               <p className="text-sm font-bold text-base">{storeName || 'Dkriuk'}</p>
               {storeAddress && (
                 <p className="text-[10px] text-gray-600 mt-0.5">{storeAddress}</p>
@@ -1691,6 +1754,13 @@ export default function POSPage() {
               <>
                 <div className="border-t border-dashed border-gray-400 my-2" />
                 <p className="text-[10px] text-gray-500">Catatan: {lastTransaction.notes}</p>
+              </>
+            )}
+
+            {printerConfig.footerText && (
+              <>
+                <div className="border-t border-dashed border-gray-400 my-2" />
+                <p className="text-center text-[10px] text-gray-600">{printerConfig.footerText}</p>
               </>
             )}
 

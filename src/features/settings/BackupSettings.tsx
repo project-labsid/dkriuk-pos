@@ -1,66 +1,400 @@
 ﻿'use client';
-import { useState, useRef } from 'react';
+
+import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Download, Upload, Database, HardDrive, AlertTriangle, Loader2, CheckCircle2, Clock, Package, ShoppingCart, Users, Tags, Truck, Trash2 } from 'lucide-react';
+import { Database, Download, Upload, Loader2, AlertTriangle, HardDrive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { useAuthStore } from '@/store';
-const fadeIn = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.3 } };
-interface Stats { users: number; branches: number; categories: number; suppliers: number; customers: number; products: number; transactions: number; purchases: number; stockAdjustments: number; }
-const statCards = [
-  { key: 'products' as const, label: 'Produk', icon: Package, color: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-400' },
-  { key: 'transactions' as const, label: 'Transaksi', icon: ShoppingCart, color: 'text-orange-600 bg-orange-100 dark:bg-orange-900/40 dark:text-orange-400' },
-  { key: 'customers' as const, label: 'Pelanggan', icon: Users, color: 'text-violet-600 bg-violet-100 dark:bg-violet-900/40 dark:text-violet-400' },
-  { key: 'categories' as const, label: 'Kategori', icon: Tags, color: 'text-pink-600 bg-pink-100 dark:bg-pink-900/40 dark:text-pink-400' },
-  { key: 'suppliers' as const, label: 'Supplier', icon: Truck, color: 'text-amber-600 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-400' },
-  { key: 'purchases' as const, label: 'Pembelian', icon: HardDrive, color: 'text-teal-600 bg-teal-100 dark:bg-teal-900/40 dark:text-teal-400' },
-  { key: 'stockAdjustments' as const, label: 'Stok Adj.', icon: Database, color: 'text-rose-600 bg-rose-100 dark:bg-rose-900/40 dark:text-rose-400' },
-  { key: 'users' as const, label: 'Pengguna', icon: Users, color: 'text-cyan-600 bg-cyan-100 dark:bg-cyan-900/40 dark:text-cyan-400' },
-];
-export default function BackupSettings({ onBack }: { onBack: () => void }) {
-  const user = useAuthStore(s => s.user);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const { data: bd, isLoading } = useQuery({ queryKey: ['backup-stats'], queryFn: async () => { const r = await fetch('/api/settings/backup'); if (!r.ok) throw new Error(); return (await r.json()) as { stats: Stats; exportedAt: string }; } });
-  const total = bd ? Object.values(bd.stats).reduce((a, b) => a + b, 0) : 0;
-  const exportMut = useMutation({ mutationFn: async () => { const r = await fetch('/api/settings/backup'); if (!r.ok) throw new Error(); return r.json(); }, onSuccess: (d) => { const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'dkriuk-backup-' + new Date().toISOString().split('T')[0] + '.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); toast.success('Backup berhasil diunduh!'); }, onError: () => toast.error('Gagal mengekspor') });
-  const importMut = useMutation({ mutationFn: async () => { if (!file) throw new Error('Pilih file'); const text = await file.text(); const data = JSON.parse(text); const r = await fetch('/api/settings/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: data.data, options: { replaceAll: false, importedOnly: true, modules: [] } }) }); const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Gagal'); return j; }, onSuccess: (d) => { toast.success(d.message); setFile(null); if (fileRef.current) fileRef.current.value = ''; }, onError: (e: Error) => toast.error(e.message) });
-  const resetMut = useMutation({ mutationFn: async () => { const r = await fetch('/api/reset', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preserveUserId: user?.id }) }); const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; }, onSuccess: () => { toast.success('Data direset. Refresh halaman.'); setTimeout(() => window.location.reload(), 1500); }, onError: (e: Error) => toast.error(e.message) });
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const fadeIn = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.3 },
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface DbStats {
+  totalProducts: number;
+  totalTransactions: number;
+  totalCustomers: number;
+  totalPurchases: number;
+  totalCategories: number;
+  totalSuppliers: number;
+  totalBranches: number;
+  totalUsers: number;
+  totalStockAdjustments: number;
+  dbSize: string;
+}
+
+interface BackupTables {
+  branches: unknown[];
+  categories: unknown[];
+  suppliers: unknown[];
+  customers: unknown[];
+  users: unknown[];
+  products: unknown[];
+  taxSettings: unknown[];
+  serviceChargeSettings: unknown[];
+  storeSettings: unknown[];
+  transactions: unknown[];
+  purchases: unknown[];
+  stockAdjustments: unknown[];
+}
+
+interface BackupPayload {
+  data: {
+    exportedAt: string;
+    version: string;
+    tables: BackupTables;
+  };
+}
+
+// ─── Component ─────────────────────────────────────────────────────────────────
+
+export default function BackupSettings() {
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingBackup, setPendingBackup] = useState<BackupPayload | null>(null);
+  const [pendingFileName, setPendingFileName] = useState('');
+
+  // ── Fetch DB Stats ──
+  const { data: stats, isLoading: statsLoading } = useQuery<DbStats>({
+    queryKey: ['backup-stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/backup?stats=true');
+      if (!res.ok) throw new Error('Gagal memuat statistik database');
+      const json = await res.json();
+      return json.data as DbStats;
+    },
+  });
+
+  // ── Export Handler ──
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const res = await fetch('/api/backup');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Gagal mengekspor data');
+      }
+      const json = await res.json();
+
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+      const blob = new Blob([JSON.stringify(json, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup-${timestamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success('Data berhasil diekspor');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Terjadi kesalahan';
+      toast.error(message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // ── Import Handler (file select) ──
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setPendingFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        // Basic validation before opening dialog
+        if (!parsed?.data?.tables) {
+          toast.error('Format file backup tidak valid');
+          return;
+        }
+        setPendingBackup(parsed as BackupPayload);
+        setConfirmOpen(true);
+      } catch {
+        toast.error('File tidak dapat dibaca sebagai JSON');
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset the input so the same file can be selected again
+    e.target.value = '';
+  };
+
+  // ── Import Handler (confirm) ──
+  const handleImportConfirm = async () => {
+    if (!pendingBackup) return;
+    setIsImporting(true);
+    try {
+      const res = await fetch('/api/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pendingBackup),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json.error || 'Gagal mengimpor data');
+      }
+
+      toast.success(json.data.message || 'Data berhasil diimpor');
+      queryClient.invalidateQueries();
+      setConfirmOpen(false);
+      setPendingBackup(null);
+
+      // Suggest page reload after import
+      setTimeout(() => {
+        toast('Data telah diperbarui. Disarankan untuk memuat ulang halaman.', {
+          action: {
+            label: 'Muat Ulang',
+            onClick: () => window.location.reload(),
+          },
+          duration: 10000,
+        });
+      }, 500);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Terjadi kesalahan';
+      toast.error(message);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // ── Compute table counts for confirmation dialog ──
+  const tableLabels: { key: keyof BackupTables; label: string }[] = [
+    { key: 'branches', label: 'Cabang' },
+    { key: 'categories', label: 'Kategori' },
+    { key: 'suppliers', label: 'Supplier' },
+    { key: 'customers', label: 'Pelanggan' },
+    { key: 'users', label: 'Pengguna' },
+    { key: 'products', label: 'Produk' },
+    { key: 'taxSettings', label: 'Pengaturan Pajak' },
+    { key: 'serviceChargeSettings', label: 'Pengaturan Biaya Layanan' },
+    { key: 'storeSettings', label: 'Pengaturan Toko' },
+    { key: 'transactions', label: 'Transaksi' },
+    { key: 'purchases', label: 'Pembelian' },
+    { key: 'stockAdjustments', label: 'Penyesuaian Stok' },
+  ];
+
+  const nonEmptyTables = pendingBackup
+    ? tableLabels.filter((t) => (pendingBackup.data.tables[t.key] as unknown[]).length > 0)
+    : [];
+
   return (
     <motion.div {...fadeIn} className="space-y-6">
-      <div className="flex items-center gap-4"><Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5"/></Button><div><h2 className="text-xl font-bold">Backup & Restore</h2><p className="text-sm text-muted-foreground">Ekspor, impor, dan kelola data aplikasi</p></div></div>
-      <Card><CardHeader><CardTitle className="flex items-center justify-between text-lg"><span className="flex items-center gap-2"><HardDrive className="h-5 w-5 text-emerald-600"/>Statistik Database</span>{bd && <Badge variant="secondary">{total.toLocaleString('id-ID')} record</Badge>}</CardTitle></CardHeader><CardContent>
-        {isLoading ? <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">{Array.from({length:8}).map((_,i)=><Skeleton key={i} className="h-20 rounded-lg"/>)}</div> : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">{statCards.map(s => { const Icon=s.icon; const v=bd?.stats[s.key]??0; return (
-            <div key={s.key} className="rounded-lg border p-3 space-y-2"><div className={'w-8 h-8 rounded-lg flex items-center justify-center ' + s.color}><Icon className="h-4 w-4"/></div><p className="text-lg font-bold">{v.toLocaleString('id-ID')}</p><p className="text-[11px] text-muted-foreground">{s.label}</p></div>
-          ); })}</div>
-        )}
-        {bd && <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground"><Clock className="h-3.5 w-3.5"/><span>Terakhir: {new Date(bd.exportedAt).toLocaleString('id-ID')}</span></div>}
-      </CardContent></Card>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Download className="h-5 w-5 text-emerald-600"/>Ekspor Data</CardTitle></CardHeader><CardContent className="space-y-4">
-          <p className="text-xs text-muted-foreground">Unduh semua data (produk, transaksi, pelanggan, pengaturan) ke file JSON.</p>
-          <Button onClick={() => exportMut.mutate()} disabled={exportMut.isPending} className="w-full bg-emerald-600 hover:bg-emerald-700">{exportMut.isPending ? <Loader2 className="h-4 h-4 animate-spin"/> : <Download className="h-4 h-4"/>} Unduh Backup</Button>
-        </CardContent></Card>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Upload className="h-5 w-5 text-emerald-600"/>Impor Data</CardTitle></CardHeader><CardContent className="space-y-4">
-          <input ref={fileRef} type="file" accept=".json" onChange={e=>{const f=e.target.files?.[0]; if(f){if(!f.name.endsWith('.json')){toast.error('Format harus .json');return;}setFile(f);}}} className="hidden"/>
-          <button type="button" onClick={()=>fileRef.current?.click()} className="w-full flex items-center justify-center gap-3 rounded-lg border-2 border-dashed p-6 hover:bg-muted/50 transition-colors cursor-pointer">
-            {file ? <><CheckCircle2 className="h-8 w-8 text-emerald-600"/><div className="text-left"><p className="text-sm font-medium">{file.name}</p><p className="text-xs text-muted-foreground">{(file.size/1024).toFixed(1)} KB</p></div></> : <><Upload className="h-8 w-8 text-muted-foreground"/><div className="text-left"><p className="text-sm font-medium">Pilih File Backup</p><p className="text-xs text-muted-foreground">Format .json</p></div></>}
-          </button>
-          <Button onClick={()=>importMut.mutate()} disabled={importMut.isPending||!file} variant="outline" className="w-full">{importMut.isPending?<Loader2 className="h-4 h-4 animate-spin"/>:<Upload className="h-4 h-4"/>} Impor Data</Button>
-        </CardContent></Card>
-      </div>
-      <Card className="border-red-200 dark:border-red-900"><CardHeader><CardTitle className="flex items-center gap-2 text-lg text-red-600"><AlertTriangle className="h-5 w-5"/>Zona Berbahaya</CardTitle></CardHeader><CardContent>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-lg border border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20">
-          <div><p className="text-sm font-medium">Reset Semua Data</p><p className="text-xs text-muted-foreground">Hapus semua data kecuali akun Anda.</p></div>
-          <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive"><Trash2 className="h-4 h-4 mr-2"/>Reset</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Apakah Anda yakin?</AlertDialogTitle><AlertDialogDescription>Semua data akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={()=>resetMut.mutate()} disabled={resetMut.isPending} className="bg-red-600 hover:bg-red-700">{resetMut.isPending&&<Loader2 className="h-4 h-4 mr-2 animate-spin"/>}Ya, Reset</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
-        </div>
-      </CardContent></Card>
+      {/* ── DB Stats Section ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HardDrive className="h-5 w-5" />
+            Statistik Database
+          </CardTitle>
+          <CardDescription>
+            Ringkasan data yang tersimpan saat ini
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {statsLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-7 w-16" />
+                </div>
+              ))}
+            </div>
+          ) : stats ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              <StatItem label="Produk" value={stats.totalProducts} />
+              <StatItem label="Transaksi" value={stats.totalTransactions} />
+              <StatItem label="Pelanggan" value={stats.totalCustomers} />
+              <StatItem label="Pembelian" value={stats.totalPurchases} />
+              <StatItem label="Kategori" value={stats.totalCategories} />
+              <StatItem label="Supplier" value={stats.totalSuppliers} />
+              <StatItem label="Cabang" value={stats.totalBranches} />
+              <StatItem label="Pengguna" value={stats.totalUsers} />
+              <StatItem label="Penyesuaian Stok" value={stats.totalStockAdjustments} />
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* ── Export Section ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Download className="h-5 w-5" />
+            Ekspor Data
+          </CardTitle>
+          <CardDescription>
+            Unduh seluruh data dalam format JSON sebagai cadangan
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-4">
+            File backup berisi seluruh data termasuk produk, transaksi, pelanggan, dan pengaturan toko.
+            Password pengguna tidak disertakan untuk keamanan.
+          </p>
+          <Button onClick={handleExport} disabled={isExporting}>
+            {isExporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Ekspor Data
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── Import Section ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5" />
+            Impor Data
+          </CardTitle>
+          <CardDescription>
+            Pulihkan data dari file backup JSON
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30 p-4 mb-4">
+            <div className="flex gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-800 dark:text-amber-200">
+                <p className="font-medium">Perhatian</p>
+                <p className="mt-1">
+                  Mengimpor data akan <strong>mengganti seluruh data yang ada</strong> di database.
+                  Pastikan Anda sudah melakukan ekspor terlebih dahulu sebagai cadangan.
+                  Password semua pengguna akan diatur ulang setelah impor.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Impor Data
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── Confirmation Dialog ── */}
+      <Dialog open={confirmOpen} onOpenChange={(open) => {
+        if (!open) setPendingBackup(null);
+        setConfirmOpen(open);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Konfirmasi Impor Data
+            </DialogTitle>
+            <DialogDescription>
+              Anda akan mengimpor data dari file <strong>{pendingFileName}</strong>.
+              Seluruh data saat ini akan dihapus dan diganti dengan data dari file ini.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="rounded-lg border p-3">
+              <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Isi file backup:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {nonEmptyTables.map((t) => (
+                  <Badge key={t.key} variant="secondary">
+                    {t.label}:{' '}
+                    {(pendingBackup!.data.tables[t.key] as unknown[]).length}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            <p className="text-xs text-muted-foreground">
+              Ekspor: {pendingBackup?.data.exportedAt ? new Date(pendingBackup.data.exportedAt).toLocaleString('id-ID') : '-'}
+              {' · '}Versi: {pendingBackup?.data.version || '-'}
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirmOpen(false);
+                setPendingBackup(null);
+              }}
+              disabled={isImporting}
+            >
+              Batal
+            </Button>
+            <Button variant="destructive" onClick={handleImportConfirm} disabled={isImporting}>
+              {isImporting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              Ya, Impor Data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
+  );
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StatItem({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-xl font-semibold tabular-nums">{value.toLocaleString('id-ID')}</p>
+    </div>
   );
 }
