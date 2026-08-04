@@ -44,7 +44,7 @@ const HelpSettings = dynamic(() => import('./HelpSettings'), { ssr: false });
 const AIAssistantSettings = dynamic(() => import('./AIAssistantSettings'), { ssr: false });
 const SubscriptionSettings = dynamic(() => import('./SubscriptionSettings'), { ssr: false });
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type SettingsSubPage =
   | null
@@ -71,7 +71,7 @@ interface MenuItem {
   external?: boolean;
 }
 
-// â”€â”€â”€ Menu Items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Menu Items ───────────────────────────────────────────────────────────────
 
 const menuItems: MenuItem[] = [
   {
@@ -148,7 +148,7 @@ const menuItems: MenuItem[] = [
   },
 ];
 
-// â”€â”€â”€ Animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Animation ───────────────────────────────────────────────────────────────
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -169,7 +169,7 @@ const fadeIn = {
   transition: { duration: 0.25 },
 };
 
-// â”€â”€â”€ Main Settings Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Main Settings Page ──────────────────────────────────────────────────────
 
 export default function SettingsPage() {
   const [subPage, setSubPage] = useState<SettingsSubPage>(null);
@@ -187,7 +187,7 @@ export default function SettingsPage() {
   return (
     <AnimatePresence mode="wait">
       {subPage === null ? (
-        // â”€â”€ Menu Grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Menu Grid ──────────────────────────────────────────────────────
         <motion.div
           key="menu"
           variants={containerVariants}
@@ -197,7 +197,7 @@ export default function SettingsPage() {
           className="p-4 sm:p-6 space-y-6"
         >
           <div>
-            <h2 className="text-xl sm:text-2xl font-bold">âš™ï¸ Pengaturan</h2>
+            <h2 className="text-xl sm:text-2xl font-bold">⚙️ Pengaturan</h2>
             <p className="text-sm text-muted-foreground mt-1">Kelola preferensi dan konfigurasi aplikasi</p>
           </div>
 
@@ -231,7 +231,7 @@ export default function SettingsPage() {
           </div>
         </motion.div>
       ) : (
-        // â”€â”€ Sub Pages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Sub Pages ───────────────────────────────────────────────────────
         <motion.div
           key={subPage}
           {...fadeIn}
@@ -267,7 +267,7 @@ export default function SettingsPage() {
 
 
 
-// â”€â”€â”€ Tax Settings (inline, simplified) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Tax Settings (inline, simplified) ────────────────────────────────────────
 
 function TaxSettingsInline({ onBack }: { onBack: () => void }) {
   const { taxConfig, setTaxConfig, serviceChargeConfig, setServiceChargeConfig } = useSettingsStore();
@@ -319,7 +319,7 @@ function TaxSettingsInline({ onBack }: { onBack: () => void }) {
   return (
     <motion.div {...fadeIn} className="max-w-2xl space-y-6">
       <div>
-        <h2 className="text-xl font-bold">ðŸ“Š Pajak & Service Charge</h2>
+        <h2 className="text-xl font-bold">📊 Pajak & Service Charge</h2>
         <p className="text-sm text-muted-foreground mt-1">Konfigurasi pajak dan biaya layanan</p>
       </div>
 

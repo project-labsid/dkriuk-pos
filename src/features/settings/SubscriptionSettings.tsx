@@ -1,20 +1,15 @@
- $sub = @'
-'use client';
-
+﻿'use client';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Gem, Check, Crown, Zap, CalendarDays, CreditCard, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-
 const fadeIn = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
-
 const plans = [
   { id:'free', name:'Gratis', price:'Rp 0', period:'/bulan', icon:Zap, color:'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400', features:['Maks. 100 produk','1 pengguna','Laporan dasar','1 cabang'], current:true },
   { id:'pro', name:'Pro', price:'Rp 99.000', period:'/bulan', icon:Gem, popular:true, color:'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400', features:['Produk tak terbatas','Hingga 5 pengguna','Laporan lengkap','Hingga 3 cabang','Notifikasi stok cerdas','AI Assistant','Backup otomatis'], current:false },
   { id:'enterprise', name:'Enterprise', price:'Rp 249.000', period:'/bulan', icon:Crown, color:'bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400', features:['Semua fitur Pro','Pengguna tak terbatas','Cabang tak terbatas','API akses penuh','AI premium','Prioritas support','Kustomisasi laporan'], current:false },
 ];
-
 export default function SubscriptionSettings({ onBack: _onBack }: { onBack: () => void }) {
   const [selected, setSelected] = useState<string | null>(null);
   return (
@@ -43,6 +38,3 @@ export default function SubscriptionSettings({ onBack: _onBack }: { onBack: () =
     </motion.div>
   );
 }
-'@
-Set-Content -Path "src\features\settings\SubscriptionSettings.tsx" -Value $sub -Encoding UTF8
-Write-Host "SubscriptionSettings.tsx DONE" -F Green

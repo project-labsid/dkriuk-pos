@@ -1,6 +1,4 @@
- $backup = @'
-'use client';
-
+﻿'use client';
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -12,10 +10,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useAuthStore } from '@/store';
-
 const fadeIn = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.3 } };
 interface Stats { users: number; branches: number; categories: number; suppliers: number; customers: number; products: number; transactions: number; purchases: number; stockAdjustments: number; }
-
 const statCards = [
   { key: 'products' as const, label: 'Produk', icon: Package, color: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-400' },
   { key: 'transactions' as const, label: 'Transaksi', icon: ShoppingCart, color: 'text-orange-600 bg-orange-100 dark:bg-orange-900/40 dark:text-orange-400' },
@@ -26,7 +22,6 @@ const statCards = [
   { key: 'stockAdjustments' as const, label: 'Stok Adj.', icon: Database, color: 'text-rose-600 bg-rose-100 dark:bg-rose-900/40 dark:text-rose-400' },
   { key: 'users' as const, label: 'Pengguna', icon: Users, color: 'text-cyan-600 bg-cyan-100 dark:bg-cyan-900/40 dark:text-cyan-400' },
 ];
-
 export default function BackupSettings({ onBack }: { onBack: () => void }) {
   const user = useAuthStore(s => s.user);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -36,7 +31,6 @@ export default function BackupSettings({ onBack }: { onBack: () => void }) {
   const exportMut = useMutation({ mutationFn: async () => { const r = await fetch('/api/settings/backup'); if (!r.ok) throw new Error(); return r.json(); }, onSuccess: (d) => { const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'dkriuk-backup-' + new Date().toISOString().split('T')[0] + '.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); toast.success('Backup berhasil diunduh!'); }, onError: () => toast.error('Gagal mengekspor') });
   const importMut = useMutation({ mutationFn: async () => { if (!file) throw new Error('Pilih file'); const text = await file.text(); const data = JSON.parse(text); const r = await fetch('/api/settings/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: data.data, options: { replaceAll: false, importedOnly: true, modules: [] } }) }); const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Gagal'); return j; }, onSuccess: (d) => { toast.success(d.message); setFile(null); if (fileRef.current) fileRef.current.value = ''; }, onError: (e: Error) => toast.error(e.message) });
   const resetMut = useMutation({ mutationFn: async () => { const r = await fetch('/api/reset', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preserveUserId: user?.id }) }); const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; }, onSuccess: () => { toast.success('Data direset. Refresh halaman.'); setTimeout(() => window.location.reload(), 1500); }, onError: (e: Error) => toast.error(e.message) });
-
   return (
     <motion.div {...fadeIn} className="space-y-6">
       <div className="flex items-center gap-4"><Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5"/></Button><div><h2 className="text-xl font-bold">Backup & Restore</h2><p className="text-sm text-muted-foreground">Ekspor, impor, dan kelola data aplikasi</p></div></div>
@@ -70,6 +64,3 @@ export default function BackupSettings({ onBack }: { onBack: () => void }) {
     </motion.div>
   );
 }
-'@
-Set-Content -Path "src\features\settings\BackupSettings.tsx" -Value $backup -Encoding UTF8
-Write-Host "BackupSettings.tsx DONE" -F Green

@@ -1,6 +1,4 @@
- $ai = @'
-'use client';
-
+﻿'use client';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Bot, Sparkles, MessageSquare, BarChart3, Lightbulb, ToggleLeft, ToggleRight, Loader2, Save } from 'lucide-react';
@@ -8,9 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-
 const fadeIn = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
-
 export default function AIAssistantSettings({ onBack: _onBack }: { onBack: () => void }) {
   const qc = useQueryClient();
   const [smartSuggestions, setSmartSuggestions] = useState(true);
@@ -19,7 +15,6 @@ export default function AIAssistantSettings({ onBack: _onBack }: { onBack: () =>
   const [restockAlert, setRestockAlert] = useState(true);
   const [customerInsight, setCustomerInsight] = useState(false);
   const [aiModel, setAiModel] = useState('gpt-4o-mini');
-
   const saveMut = useMutation({
     mutationFn: async (s: Record<string, string>) => {
       const r = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: s }) });
@@ -28,7 +23,6 @@ export default function AIAssistantSettings({ onBack: _onBack }: { onBack: () =>
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['settings'] }); toast.success('Pengaturan AI disimpan'); },
     onError: () => toast.error('Gagal menyimpan'),
   });
-
   const features = [
     { icon: Sparkles, label: 'Saran Produk Cerdas', desc: 'Rekomendasi produk berdasarkan riwayat penjualan', state: smartSuggestions, toggle: setSmartSuggestions },
     { icon: MessageSquare, label: 'Kategorisasi Otomatis', desc: 'AI mengelompokkan produk ke kategori yang tepat', state: autoCategorize, toggle: setAutoCategorize },
@@ -36,7 +30,6 @@ export default function AIAssistantSettings({ onBack: _onBack }: { onBack: () =>
     { icon: Lightbulb, label: 'Peringatan Restock Cerdas', desc: 'Saran waktu restock berdasarkan pola penjualan', state: restockAlert, toggle: setRestockAlert },
     { icon: Bot, label: 'Insight Pelanggan', desc: 'Analisis perilaku dan preferensi pelanggan', state: customerInsight, toggle: setCustomerInsight },
   ];
-
   return (
     <motion.div {...fadeIn} className="max-w-2xl space-y-6">
       <div><h2 className="text-xl font-bold">AI Assistant</h2><p className="text-sm text-muted-foreground mt-1">Konfigurasi fitur kecerdasan buatan</p></div>
@@ -75,6 +68,3 @@ export default function AIAssistantSettings({ onBack: _onBack }: { onBack: () =>
     </motion.div>
   );
 }
-'@
-Set-Content -Path "src\features\settings\AIAssistantSettings.tsx" -Value $ai -Encoding UTF8
-Write-Host "AIAssistantSettings.tsx DONE" -F Green

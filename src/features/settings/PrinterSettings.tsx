@@ -1,6 +1,4 @@
- $printer = @'
-'use client';
-
+﻿'use client';
 import { useState, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -14,12 +12,10 @@ import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-
 const fadeIn = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.3 } };
 const keys = ['printer_paper_width','printer_auto_print','printer_show_logo','printer_header_text','printer_footer_text','printer_copies','printer_show_customer_name','printer_show_payment_detail'] as const;
 type K = (typeof keys)[number];
 const defaults: Record<K,string> = { printer_paper_width:'80mm', printer_auto_print:'false', printer_show_logo:'true', printer_header_text:'', printer_footer_text:'Terima kasih atas kunjungan Anda!', printer_copies:'1', printer_show_customer_name:'true', printer_show_payment_detail:'true' };
-
 export default function PrinterSettings({ onBack }: { onBack: () => void }) {
   const qc = useQueryClient();
   const { data: srv, isLoading } = useQuery({ queryKey:['settings'], queryFn: async()=>{ const r=await fetch('/api/settings'); if(!r.ok) throw new Error(); return (await r.json()).data as Record<string,string>; } });
@@ -52,6 +48,3 @@ export default function PrinterSettings({ onBack }: { onBack: () => void }) {
     </motion.div>
   );
 }
-'@
-Set-Content -Path "src\features\settings\PrinterSettings.tsx" -Value $printer -Encoding UTF8
-Write-Host "PrinterSettings.tsx DONE" -F Green
