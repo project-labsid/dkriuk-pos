@@ -1,328 +1,67 @@
 ﻿'use client';
-
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import { toast } from 'sonner';
-import { Brain, Save, Loader2, Eye, EyeOff, Zap } from 'lucide-react';
+import { Bot, Sparkles, MessageSquare, BarChart3, Lightbulb, ToggleLeft, ToggleRight, Loader2, Save, ArrowLeft, Eye, EyeOff, Zap } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const fadeIn = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.3 },
-};
-
-const AI_FEATURES = [
-  {
-    key: 'smart_suggestion',
-    label: 'Saran Produk',
-    description: 'Rekomendasi produk berdasarkan riwayat transaksi',
-  },
-  {
-    key: 'sales_analysis',
-    label: 'Analisis Penjualan',
-    description: 'Ringkasan dan analisis penjualan otomatis',
-  },
-  {
-    key: 'stock_prediction',
-    label: 'Prediksi Stok',
-    description: 'Peringatan stok berdasarkan tren penjualan',
-  },
-  {
-    key: 'auto_categorize',
-    label: 'Kategorisasi Otomatis',
-    description: 'Klasifikasi produk ke kategori yang tepat',
-  },
-  {
-    key: 'customer_insight',
-    label: 'Insight Pelanggan',
-    description: 'Analisis pola belanja pelanggan',
-  },
-] as const;
-
-type AIFeature = (typeof AI_FEATURES)[number]['key'];
-
-// ─── Schema & Types ───────────────────────────────────────────────────────────
-
-const aiSettingsSchema = z.object({
-  ai_api_key: z.string().default(''),
-  ai_model: z.enum(['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo']).default('gpt-4o-mini'),
-  smart_suggestion: z.boolean().default(false),
-  sales_analysis: z.boolean().default(false),
-  stock_prediction: z.boolean().default(false),
-  auto_categorize: z.boolean().default(false),
-  customer_insight: z.boolean().default(false),
-});
-
-type AISettingsForm = z.infer<typeof aiSettingsSchema>;
-
-// ─── Component ─────────────────────────────────────────────────────────────────
-
-export default function AIAssistantSettings() {
-  const queryClient = useQueryClient();
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['settings-ai'],
-    queryFn: async () => {
-      const res = await fetch('/api/settings/ai');
-      if (!res.ok) throw new Error('Gagal memuat pengaturan AI');
-      const json = await res.json();
-      return json.data as Record<string, string>;
-    },
-  });
-
-  const form = useForm<AISettingsForm>({
-    resolver: zodResolver(aiSettingsSchema),
-    defaultValues: {
-      ai_api_key: '',
-      ai_model: 'gpt-4o-mini',
-      smart_suggestion: false,
-      sales_analysis: false,
-      stock_prediction: false,
-      auto_categorize: false,
-      customer_insight: false,
-    },
-    values: data
-      ? {
-          ai_api_key: '',
-          ai_model: (data.ai_model as AISettingsForm['ai_model']) || 'gpt-4o-mini',
-          smart_suggestion: parseFeatures(data.ai_enabled_features).includes('smart_suggestion'),
-          sales_analysis: parseFeatures(data.ai_enabled_features).includes('sales_analysis'),
-          stock_prediction: parseFeatures(data.ai_enabled_features).includes('stock_prediction'),
-          auto_categorize: parseFeatures(data.ai_enabled_features).includes('auto_categorize'),
-          customer_insight: parseFeatures(data.ai_enabled_features).includes('customer_insight'),
-        }
-      : undefined,
-  });
-
-  // Track whether the user has a stored API key
-  const hasApiKey = !!data?.ai_api_key && data.ai_api_key.length > 0;
-
-  const mutation = useMutation({
-    mutationFn: async (values: AISettingsForm) => {
-      const enabledFeatures: string[] = [];
-      for (const feature of AI_FEATURES) {
-        if (values[feature.key]) {
-          enabledFeatures.push(feature.key);
-        }
-      }
-
-      const payload: Record<string, string> = {
-        ai_model: values.ai_model,
-        ai_enabled_features: JSON.stringify(enabledFeatures),
-      };
-
-      // Only send API key if the user typed something new
-      if (apiKeyInput.length > 0) {
-        payload.ai_api_key = apiKeyInput;
-      }
-
-      const res = await fetch('/api/settings/ai', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Gagal menyimpan pengaturan AI');
-      return json;
-    },
-    onSuccess: () => {
-      toast.success('Pengaturan AI berhasil disimpan');
-      setApiKeyInput('');
-      queryClient.invalidateQueries({ queryKey: ['settings-ai'] });
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
-  const testMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'test' }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Koneksi gagal');
-      return json;
-    },
-    onSuccess: () => toast.success('Koneksi API berhasil!'),
-    onError: (err) => toast.error(err.message),
-  });
-
-  const onSubmit = (values: AISettingsForm) => mutation.mutate(values);
-
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+const fadeIn = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
+export default function AIAssistantSettings({ onBack }: { onBack: () => void }) {
+  const qc = useQueryClient();
+  const { data: srv } = useQuery({ queryKey: ['settings'], queryFn: async () => { const r = await fetch('/api/settings'); if (!r.ok) throw new Error(); return (await r.json()).data as Record<string, string>; } });
+  const [showKey, setShowKey] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [aiModel, setAiModel] = useState(srv?.ai_model || 'gpt-4o-mini');
+  const [smartSuggestions, setSmartSuggestions] = useState(srv?.ai_smart_suggestions !== 'false');
+  const [autoCategorize, setAutoCategorize] = useState(srv?.ai_auto_categorize !== 'false');
+  const [salesForecast, setSalesForecast] = useState(srv?.ai_sales_forecast === 'true');
+  const [restockAlert, setRestockAlert] = useState(srv?.ai_restock_alert !== 'false');
+  const [customerInsight, setCustomerInsight] = useState(srv?.ai_customer_insight === 'true');
+  const testMut = useMutation({ mutationFn: async () => { const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'test', apiKey: apiKey || srv?.ai_api_key || '', model: aiModel }) }); const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Gagal'); return j; }, onSuccess: (d) => toast.success('Koneksi AI berhasil! Model: ' + (d.data?.model || aiModel)), onError: (e: Error) => toast.error(e.message) });
+  const saveMut = useMutation({ mutationFn: async (s: Record<string, string>) => { const r = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: s }) }); if (!r.ok) throw new Error(); }, onSuccess: () => { qc.invalidateQueries({ queryKey: ['settings'] }); toast.success('Pengaturan AI disimpan'); }, onError: () => toast.error('Gagal menyimpan') });
+  const masked = srv?.ai_api_key ? srv.ai_api_key.substring(0, 8) + '****' : '';
+  const features = [
+    { icon: Sparkles, label: 'Saran Produk Cerdas', desc: 'Rekomendasi produk berdasarkan riwayat penjualan', state: smartSuggestions, toggle: setSmartSuggestions },
+    { icon: MessageSquare, label: 'Kategorisasi Otomatis', desc: 'AI mengelompokkan produk ke kategori yang tepat', state: autoCategorize, toggle: setAutoCategorize },
+    { icon: BarChart3, label: 'Prediksi Penjualan', desc: 'Perkiraan tren penjualan ke depan', state: salesForecast, toggle: setSalesForecast },
+    { icon: Lightbulb, label: 'Peringatan Restock Cerdas', desc: 'Saran waktu restock berdasarkan pola penjualan', state: restockAlert, toggle: setRestockAlert },
+    { icon: Bot, label: 'Insight Pelanggan', desc: 'Analisis perilaku dan preferensi pelanggan', state: customerInsight, toggle: setCustomerInsight },
+  ];
   return (
-    <motion.div {...fadeIn}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Brain className="h-5 w-5" />
-            Asisten AI
-          </CardTitle>
-          <CardDescription>
-            Konfigurasi asisten AI untuk fitur cerdas di POS
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} className="space-y-1.5">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-9 w-full" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-                {/* API Key */}
-                <FormField
-                  control={form.control}
-                  name="ai_api_key"
-                  render={() => (
-                    <FormItem>
-                      <FormLabel>API Key</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Input
-                            type={showApiKey ? 'text' : 'password'}
-                            placeholder={hasApiKey ? 'Kunci tersimpan — biarkan kosong untuk tetap' : 'sk-...'}
-                            value={apiKeyInput}
-                            onChange={(e) => setApiKeyInput(e.target.value)}
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                            onClick={() => setShowApiKey(!showApiKey)}
-                          >
-                            {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                      </FormControl>
-                      <FormDescription>
-                        {hasApiKey
-                          ? 'API key tersimpan. Ketik key baru untuk mengganti.'
-                          : 'Masukkan OpenAI API key Anda.'}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Model AI */}
-                <FormField
-                  control={form.control}
-                  name="ai_model"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Model AI</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Pilih model AI" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="gpt-4o">GPT-4o (Recommended)</SelectItem>
-                          <SelectItem value="gpt-4o-mini">GPT-4o Mini (Fast &amp; Cheap)</SelectItem>
-                          <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Feature Toggles */}
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium">Fitur AI</Label>
-                  {AI_FEATURES.map((feature) => (
-                    <FormField
-                      key={feature.key}
-                      control={form.control}
-                      name={feature.key}
-                      render={({ field }) => (
-                        <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                          <div className="space-y-0.5">
-                            <FormLabel className="text-sm">{feature.label}</FormLabel>
-                            <FormDescription>{feature.description}</FormDescription>
-                          </div>
-                          <FormControl>
-                            <Switch
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                  ))}
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-col gap-3 pt-2 sm:flex-row">
-                  <Button type="submit" disabled={mutation.isPending}>
-                    {mutation.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="mr-2 h-4 w-4" />
-                    )}
-                    Simpan Pengaturan
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={testMutation.isPending}
-                    onClick={() => testMutation.mutate()}
-                  >
-                    {testMutation.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Zap className="mr-2 h-4 w-4" />
-                    )}
-                    Test Koneksi
-                  </Button>
-                </div>
-              </form>
-            </Form>
-          )}
-        </CardContent>
+    <motion.div {...fadeIn} className="max-w-2xl space-y-6">
+      <div className="flex items-center gap-4"><Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button><div><h2 className="text-xl font-bold">AI Assistant</h2><p className="text-sm text-muted-foreground mt-1">Konfigurasi fitur kecerdasan buatan</p></div></div>
+      <Card className="p-4 sm:p-6 space-y-4">
+        <div><h3 className="font-semibold">API Key OpenAI</h3><p className="text-xs text-muted-foreground">Masukkan kunci API untuk menggunakan fitur AI</p></div>
+        <div className="relative"><Input type={showKey ? 'text' : 'password'} value={apiKey || ''} onChange={e => setApiKey(e.target.value)} placeholder={masked || 'sk-...'} /><button type="button" onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">{showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></div>
+        <div className="flex gap-2"><Button onClick={() => testMut.mutate()} disabled={testMut.isPending} variant="outline" size="sm">{testMut.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2" />}Test Koneksi</Button></div>
       </Card>
+      <Card className="p-4 sm:p-6 space-y-4">
+        <div><h3 className="font-semibold">Model AI</h3><p className="text-xs text-muted-foreground">Pilih model yang digunakan</p></div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[{ id: 'gpt-4o-mini', label: 'GPT-4o Mini', desc: 'Cepat & hemat' }, { id: 'gpt-4o', label: 'GPT-4o', desc: 'Seimbang' }, { id: 'gpt-4-turbo', label: 'GPT-4 Turbo', desc: 'Akurasi tinggi' }].map(m => (
+            <button key={m.id} onClick={() => setAiModel(m.id)} className={'p-3 rounded-xl border text-left transition-all ' + (aiModel === m.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-500/20' : 'border-border hover:bg-muted')}>
+              <p className="text-sm font-medium">{m.label}</p><p className="text-[11px] text-muted-foreground mt-0.5">{m.desc}</p>
+            </button>
+          ))}
+        </div>
+      </Card>
+      <Card className="p-4 sm:p-6 space-y-1">
+        <div className="mb-3"><h3 className="font-semibold">Fitur AI</h3><p className="text-xs text-muted-foreground">Aktifkan atau nonaktifkan fitur AI</p></div>
+        {features.map(f => { const Icon = f.icon; return (
+          <div key={f.label} className="flex items-center justify-between py-3 border-b last:border-b-0">
+            <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400"><Icon className="w-4 h-4" /></div><div><p className="text-sm font-medium">{f.label}</p><p className="text-[11px] text-muted-foreground">{f.desc}</p></div></div>
+            <button onClick={() => f.toggle(!f.state)} className="shrink-0">{f.state ? <ToggleRight className="w-10 h-10 text-emerald-600" /> : <ToggleLeft className="w-10 h-10 text-muted-foreground/50" />}</button>
+          </div>);
+        })}
+      </Card>
+      <div className="flex justify-end">
+        <Button onClick={() => { const s: Record<string, string> = { ai_model: aiModel, ai_smart_suggestions: String(smartSuggestions), ai_auto_categorize: String(autoCategorize), ai_sales_forecast: String(salesForecast), ai_restock_alert: String(restockAlert), ai_customer_insight: String(customerInsight) }; if (apiKey) s.ai_api_key = apiKey; saveMut.mutate(s); }} disabled={saveMut.isPending} className="bg-emerald-600 hover:bg-emerald-700">
+          {saveMut.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}<Save className="w-4 h-4 mr-2" />Simpan
+        </Button>
+      </div>
     </motion.div>
   );
-}
-
-// ─── Utilities ─────────────────────────────────────────────────────────────────
-
-function parseFeatures(jsonString: string | undefined): AIFeature[] {
-  if (!jsonString) return [];
-  try {
-    const parsed = JSON.parse(jsonString);
-    if (Array.isArray(parsed)) {
-      return parsed.filter((f: string) =>
-        (AI_FEATURES.map((feat) => feat.key) as readonly string[]).includes(f)
-      ) as AIFeature[];
-    }
-    return [];
-  } catch {
-    return [];
-  }
 }

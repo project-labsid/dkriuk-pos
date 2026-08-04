@@ -382,10 +382,17 @@ export default function POSPage() {
         resetPaymentState();
         queryClient.invalidateQueries({ queryKey: ['pos-products'] });
         queryClient.invalidateQueries({ queryKey: ['held-transactions'] });
-        // Invalidate report queries so Laporan is always up-to-date
-        queryClient.invalidateQueries({ queryKey: ['reports'] });
+        
+               // Invalidate report/traffic/dashboard queries so Laporan is always up-to-date
         queryClient.invalidateQueries({ queryKey: ['dashboard'] });
         queryClient.invalidateQueries({ queryKey: ['transactions'] });
+        queryClient.invalidateQueries({
+          predicate: (query) => {
+            const key = String(query.queryKey[0]);
+            return key.startsWith('report-') || key.startsWith('traffic-');
+          },
+        });
+
       }, 1200);
     },
     onError: (error: Error) => {

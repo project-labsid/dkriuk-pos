@@ -60,10 +60,16 @@ export async function GET(request: NextRequest) {
 
     const { type, startDate: queryStart, endDate: queryEnd, branchId } = parsed.data
 
-    const { startDate, endDate } = getDateRange(type)
-    const start = queryStart ? new Date(queryStart) : startDate
-    const end = queryEnd ? new Date(queryEnd) : endDate
+        const { startDate, endDate } = getDateRange(type)
 
+    // Properly parse date strings: start = 00:00:00, end = 23:59:59.999
+    const start = queryStart
+      ? (() => { const d = new Date(queryStart + 'T00:00:00'); return d; })()
+      : startDate
+    const end = queryEnd
+      ? (() => { const d = new Date(queryEnd + 'T23:59:59.999'); return d; })()
+      : endDate
+      
     const baseWhere: Record<string, unknown> = {
       status: 'completed',
       type: 'sale',
