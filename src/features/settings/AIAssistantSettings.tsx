@@ -1,3 +1,4 @@
+ $ai = @'
 'use client';
 
 import { useState } from 'react';
@@ -43,7 +44,7 @@ export default function AIAssistantSettings({ onBack: _onBack }: { onBack: () =>
         <div><h3 className="font-semibold">Model AI</h3><p className="text-xs text-muted-foreground">Pilih model yang digunakan</p></div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[{ id: 'gpt-4o-mini', label: 'GPT-4o Mini', desc: 'Cepat & hemat' }, { id: 'gpt-4o', label: 'GPT-4o', desc: 'Seimbang' }, { id: 'gpt-4-turbo', label: 'GPT-4 Turbo', desc: 'Akurasi tinggi' }].map(m => (
-            <button key={m.id} onClick={() => setAiModel(m.id)} className={`p-3 rounded-xl border text-left transition-all ${aiModel === m.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-500/20' : 'border-border hover:bg-muted'}`}>
+            <button key={m.id} onClick={() => setAiModel(m.id)} className={'p-3 rounded-xl border text-left transition-all ' + (aiModel === m.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-500/20' : 'border-border hover:bg-muted')}>
               <p className="text-sm font-medium">{m.label}</p><p className="text-[11px] text-muted-foreground mt-0.5">{m.desc}</p>
             </button>
           ))}
@@ -74,3 +75,6 @@ export default function AIAssistantSettings({ onBack: _onBack }: { onBack: () =>
     </motion.div>
   );
 }
+'@
+Set-Content -Path "src\features\settings\AIAssistantSettings.tsx" -Value $ai -Encoding UTF8
+Write-Host "AIAssistantSettings.tsx DONE" -F Green
