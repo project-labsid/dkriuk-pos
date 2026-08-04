@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
 
-// GET /api/settings/backup - Export all data as JSON
+// GET - Export all data as JSON
 export async function GET() {
   try {
-    const [users, branches, categories, suppliers, customers, products, transactions, transactionItems, purchases, purchaseItems, stockAdjustments, storeSettings, taxSettings, serviceChargeSettings, activityLogs, notifications, notificationSettings] = await Promise.all([
-      db.user.findMany({ select: { id: true, name: true, email: true, phone: true, avatar: true, role: true, branchId: true, isActive: true, createdAt: true, updatedAt: true } }),
+    const [users, branches, categories, suppliers, customers, products, transactions, transactionItems, purchases, purchaseItems, stockAdjustments, taxSettings, serviceChargeSettings, storeSettings] = await Promise.all([
+      db.user.findMany({ include: { branch: true } }),
       db.branch.findMany(),
       db.category.findMany(),
       db.supplier.findMany(),
@@ -13,183 +13,121 @@ export async function GET() {
       db.product.findMany(),
       db.transaction.findMany({ include: { items: true } }),
       db.transactionItem.findMany(),
-      db.purchase.findMany(),
+      db.purchase.findMany({ include: { items: true } }),
       db.purchaseItem.findMany(),
       db.stockAdjustment.findMany(),
-      db.storeSetting.findMany(),
       db.taxSetting.findMany(),
       db.serviceChargeSetting.findMany(),
-      db.activityLog.findMany(),
-      db.notification.findMany(),
-      db.notificationSetting.findMany(),
-    ])
+      db.storeSetting.findMany(),
+    ]);
 
-    const backupData = {
-      version: '1.0',
+    const stats = {
+      users: users.length,
+      branches: branches.length,
+      categories: categories.length,
+      suppliers: suppliers.length,
+      customers: customers.length,
+      products: products.length,
+      transactions: transactions.length,
+      purchases: purchases.length,
+      stockAdjustments: stockAdjustments.length,
+    };
+
+    return NextResponse.json({
+      data: { users, branches, categories, suppliers, customers, products, transactions, transactionItems, purchases, purchaseItems, stockAdjustments, taxSettings, serviceChargeSettings, storeSettings },
+      stats,
       exportedAt: new Date().toISOString(),
-      appVersion: '0.2.1',
-      stats: {
-        users: users.length,
-        branches: branches.length,
-        categories: categories.length,
-        suppliers: suppliers.length,
-        customers: customers.length,
-        products: products.length,
-        transactions: transactions.length,
-        purchases: purchases.length,
-        stockAdjustments: stockAdjustments.length,
-      },
-      data: {
-        users,
-        branches,
-        categories,
-        suppliers,
-        customers,
-        products,
-        transactions,
-        transactionItems,
-        purchases,
-        purchaseItems,
-        stockAdjustments,
-        storeSettings,
-        taxSettings,
-        serviceChargeSettings,
-        activityLogs,
-        notifications,
-        notificationSettings,
-      },
-    }
-
-    return NextResponse.json(backupData)
+    });
   } catch (error) {
-    console.error('Backup export error:', error)
-    return NextResponse.json(
-      { error: 'Gagal mengekspor data' },
-      { status: 500 }
-    )
+    console.error('Export error:', error);
+    return NextResponse.json({ error: 'Gagal mengekspor data' }, { status: 500 });
   }
 }
 
-// POST /api/settings/backup - Import data from JSON
+// POST - Import data from JSON backup
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { data, options = {} } = body
+    const body = await request.json();
+    const { data, options } = body;
 
-    if (!data || typeof data !== 'object') {
-      return NextResponse.json(
-        { error: 'Format data tidak valid' },
-        { status: 400 }
-      )
+    if (!data) {
+      return NextResponse.json({ error: 'Data backup tidak ditemukan' }, { status: 400 });
     }
 
-    const replaceAll = options.replaceAll === true
-    const importedOnly = options.importedOnly === true
-    const modules: string[] = options.modules || []
+    const imported: string[] = [];
+    const counts: Record<string, number> = {};
 
-    let importCount = 0
-
-    // Import categories (must be before products for FK)
-    if (data.categories && (modules.length === 0 || modules.includes('categories'))) {
-      if (replaceAll) {
-        await db.category.deleteMany()
+    // Import store settings
+    if (data.storeSettings && Array.isArray(data.storeSettings)) {
+      for (const setting of data.storeSettings) {
+        await db.storeSetting.upsert({
+          where: { key: setting.key },
+          update: { value: setting.value, description: setting.description },
+          create: { key: setting.key, value: setting.value, description: setting.description },
+        });
       }
+      counts.storeSettings = data.storeSettings.length;
+      imported.push('storeSettings');
+    }
+
+    // Import categories
+    if (data.categories && Array.isArray(data.categories)) {
       for (const cat of data.categories) {
-        const { id, ...rest } = cat
-        await db.category.create({ data: rest })
-        importCount++
+        await db.category.upsert({
+          where: { id: cat.id },
+          update: { name: cat.name, description: cat.description, isActive: cat.isActive },
+          create: { id: cat.id, name: cat.name, description: cat.description, isActive: cat.isActive },
+        });
       }
-    }
-
-    // Import branches (must be before users for FK)
-    if (data.branches && (modules.length === 0 || modules.includes('branches'))) {
-      if (replaceAll) {
-        await db.branch.deleteMany()
-      }
-      for (const branch of data.branches) {
-        const { id, ...rest } = branch
-        await db.branch.create({ data: rest })
-        importCount++
-      }
+      counts.categories = data.categories.length;
+      imported.push('categories');
     }
 
     // Import suppliers
-    if (data.suppliers && (modules.length === 0 || modules.includes('suppliers'))) {
-      if (replaceAll) {
-        await db.supplier.deleteMany()
-      }
+    if (data.suppliers && Array.isArray(data.suppliers)) {
       for (const sup of data.suppliers) {
-        const { id, ...rest } = sup
-        await db.supplier.create({ data: rest })
-        importCount++
+        await db.supplier.upsert({
+          where: { id: sup.id },
+          update: { name: sup.name, phone: sup.phone, email: sup.email, address: sup.address, isActive: sup.isActive },
+          create: { id: sup.id, name: sup.name, phone: sup.phone, email: sup.email, address: sup.address, isActive: sup.isActive },
+        });
       }
+      counts.suppliers = data.suppliers.length;
+      imported.push('suppliers');
     }
 
     // Import customers
-    if (data.customers && (modules.length === 0 || modules.includes('customers'))) {
-      if (replaceAll) {
-        await db.customer.deleteMany()
-      }
+    if (data.customers && Array.isArray(data.customers)) {
       for (const cust of data.customers) {
-        const { id, ...rest } = cust
-        await db.customer.create({ data: rest })
-        importCount++
+        await db.customer.upsert({
+          where: { id: cust.id },
+          update: { name: cust.name, phone: cust.phone, email: cust.email, address: cust.address, memberPoint: cust.memberPoint, isActive: cust.isActive },
+          create: { id: cust.id, name: cust.name, phone: cust.phone, email: cust.email, address: cust.address, memberPoint: cust.memberPoint, isActive: cust.isActive },
+        });
       }
+      counts.customers = data.customers.length;
+      imported.push('customers');
     }
 
     // Import products
-    if (data.products && (modules.length === 0 || modules.includes('products'))) {
-      if (replaceAll) {
-        await db.stockAdjustment.deleteMany({ where: { product: {} } })
-        await db.transactionItem.deleteMany({ where: { product: {} } })
-        await db.purchaseItem.deleteMany({ where: { product: {} } })
-        await db.product.deleteMany()
-      }
+    if (data.products && Array.isArray(data.products)) {
       for (const prod of data.products) {
-        const { id, ...rest } = prod
-        await db.product.create({ data: rest })
-        importCount++
+        await db.product.upsert({
+          where: { id: prod.id },
+          update: { name: prod.name, barcode: prod.barcode, sku: prod.sku, categoryId: prod.categoryId, unit: prod.unit, costPrice: prod.costPrice, sellPrice: prod.sellPrice, stock: prod.stock, minStock: prod.minStock, image: prod.image, isActive: prod.isActive, branchId: prod.branchId },
+          create: { id: prod.id, name: prod.name, barcode: prod.barcode, sku: prod.sku, categoryId: prod.categoryId, unit: prod.unit, costPrice: prod.costPrice, sellPrice: prod.sellPrice, stock: prod.stock, minStock: prod.minStock, image: prod.image, isActive: prod.isActive, branchId: prod.branchId },
+        });
       }
-    }
-
-    // Import users (skip if importedOnly - don't overwrite passwords)
-    if (data.users && !importedOnly && (modules.length === 0 || modules.includes('users'))) {
-      if (replaceAll) {
-        await db.user.deleteMany()
-      }
-      for (const usr of data.users) {
-        const { id, ...rest } = usr
-        await db.user.create({ data: rest })
-        importCount++
-      }
-    }
-
-    // Import store settings
-    if (data.storeSettings && (modules.length === 0 || modules.includes('settings'))) {
-      if (replaceAll) {
-        await db.storeSetting.deleteMany()
-      }
-      for (const setting of data.storeSettings) {
-        const { id, ...rest } = setting
-        await db.storeSetting.upsert({
-          where: { key: rest.key },
-          update: { value: rest.value, description: rest.description },
-          create: rest,
-        })
-        importCount++
-      }
+      counts.products = data.products.length;
+      imported.push('products');
     }
 
     return NextResponse.json({
-      success: true,
-      importedCount: importCount,
-      message: `${importCount} data berhasil diimpor`,
-    })
+      message: `Import berhasil: ${imported.join(', ')}`,
+      counts,
+    });
   } catch (error) {
-    console.error('Backup import error:', error)
-    return NextResponse.json(
-      { error: 'Gagal mengimpor data. Pastikan format file benar.' },
-      { status: 500 }
-    )
+    console.error('Import error:', error);
+    return NextResponse.json({ error: 'Gagal mengimpor data' }, { status: 500 });
   }
 }
