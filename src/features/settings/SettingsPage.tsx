@@ -15,6 +15,7 @@ import {
   HelpCircle,
   ChevronRight,
   Percent,
+  CreditCard,
   ArrowLeft,
   Loader2,
   Save,
@@ -36,6 +37,12 @@ const StoreInfoSettings = dynamic(() => import('./StoreInfoSettings'), { ssr: fa
 const NotificationSettings = dynamic(() => import('./NotificationSettings'), { ssr: false });
 const AppearanceSettings = dynamic(() => import('./AppearanceSettings'), { ssr: false });
 const UsersPage = dynamic(() => import('@/features/users/UsersPage'), { ssr: false });
+const PrinterSettings = dynamic(() => import('./PrinterSettings'), { ssr: false });
+const BackupSettings = dynamic(() => import('./BackupSettings'), { ssr: false });
+const PaymentMethodSettings = dynamic(() => import('./PaymentMethodSettings'), { ssr: false });
+const HelpSettings = dynamic(() => import('./HelpSettings'), { ssr: false });
+const AIAssistantSettings = dynamic(() => import('./AIAssistantSettings'), { ssr: false });
+const SubscriptionSettings = dynamic(() => import('./SubscriptionSettings'), { ssr: false });
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +52,7 @@ type SettingsSubPage =
   | 'store-info'
   | 'users'
   | 'printer'
+  | 'payment-methods'
   | 'ai-assistant'
   | 'notifications'
   | 'appearance'
@@ -88,17 +96,19 @@ const menuItems: MenuItem[] = [
     id: 'printer',
     icon: <Printer className="w-5 h-5" />,
     label: 'Printer',
-    description: 'Bluetooth & USB',
-    badge: 'Segera',
-    badgeVariant: 'outline',
+    description: 'Cetak struk & konfigurasi',
+  },
+  {
+    id: 'payment-methods',
+    icon: <CreditCard className="w-5 h-5" />,
+    label: 'Metode Pembayaran',
+    description: 'Tunai, debit, e-wallet, QRIS',
   },
   {
     id: 'ai-assistant',
     icon: <Bot className="w-5 h-5" />,
     label: 'AI Assistant',
     description: 'Pengaturan AI',
-    badge: 'Segera',
-    badgeVariant: 'outline',
   },
   {
     id: 'notifications',
@@ -115,18 +125,14 @@ const menuItems: MenuItem[] = [
   {
     id: 'backup',
     icon: <Cloud className="w-5 h-5" />,
-    label: 'Backup',
-    description: 'Sinkronisasi data',
-    badge: 'Segera',
-    badgeVariant: 'outline',
+    label: 'Backup & Restore',
+    description: 'Ekspor & impor data',
   },
   {
     id: 'subscription',
     icon: <Gem className="w-5 h-5" />,
     label: 'Langganan',
     description: 'Paket dan pembayaran',
-    badge: 'Segera',
-    badgeVariant: 'outline',
   },
   {
     id: 'help',
@@ -162,22 +168,6 @@ const fadeIn = {
   animate: { opacity: 1, y: 0 },
   transition: { duration: 0.25 },
 };
-
-// ─── Placeholder for coming-soon items ───────────────────────────────────────
-
-function ComingSoonPlaceholder({ label }: { label: string }) {
-  return (
-    <motion.div {...fadeIn} className="flex flex-col items-center justify-center min-h-[50vh] text-center px-4">
-      <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-        <HelpCircle className="w-8 h-8 text-muted-foreground" />
-      </div>
-      <h2 className="text-xl font-semibold mb-2">{label}</h2>
-      <p className="text-muted-foreground max-w-sm">
-        Fitur ini sedang dalam pengembangan dan akan segera tersedia.
-      </p>
-    </motion.div>
-  );
-}
 
 // ─── Main Settings Page ──────────────────────────────────────────────────────
 
@@ -262,11 +252,12 @@ export default function SettingsPage() {
           {subPage === 'notifications' && <NotificationSettings onBack={goBack} />}
           {subPage === 'appearance' && <AppearanceSettings onBack={goBack} />}
           {subPage === 'users' && <UsersPage />}
-          {subPage === 'printer' && <ComingSoonPlaceholder label="🖨️ Printer" />}
-          {subPage === 'ai-assistant' && <ComingSoonPlaceholder label="🤖 AI Assistant" />}
-          {subPage === 'backup' && <ComingSoonPlaceholder label="☁️ Backup" />}
-          {subPage === 'subscription' && <ComingSoonPlaceholder label="💎 Langganan" />}
-          {subPage === 'help' && <ComingSoonPlaceholder label="❓ Bantuan" />}
+          {subPage === 'printer' && <PrinterSettings onBack={goBack} />}
+          {subPage === 'payment-methods' && <PaymentMethodSettings onBack={goBack} />}
+          {subPage === 'ai-assistant' && <AIAssistantSettings onBack={goBack} />}
+          {subPage === 'backup' && <BackupSettings onBack={goBack} />}
+          {subPage === 'subscription' && <SubscriptionSettings onBack={goBack} />}
+          {subPage === 'help' && <HelpSettings onBack={goBack} />}
           {subPage === 'tax' && <TaxSettingsInline onBack={goBack} />}
         </motion.div>
       )}
