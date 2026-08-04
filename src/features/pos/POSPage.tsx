@@ -30,6 +30,9 @@ import {
   AlertTriangle,
   Loader2,
   Printer,
+  Copy,
+  Landmark,
+  Building2,
 } from 'lucide-react';
 
 import { cn, formatRupiah, formatNominal, parseNominal } from '@/lib/utils';
@@ -87,7 +90,20 @@ interface PaymentMethodOption {
   icon: React.ReactNode;
 }
 
-const PAYMENT_METHODS: PaymentMethodOption[] = [
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  cash: <Banknote className="size-5" />,
+  qris: <QrCode className="size-5" />,
+  transfer: <Landmark className="size-5" />,
+  virtual_account: <Building2 className="size-5" />,
+  ewallet: <Smartphone className="size-5" />,
+  debit: <CreditCard className="size-5" />,
+  credit: <CreditCard className="size-5" />,
+  manual: <CircleDollarSign className="size-5" />,
+  other: <CircleDollarSign className="size-5" />,
+};
+
+// Fallback if DB methods are not available
+const FALLBACK_METHODS: PaymentMethodOption[] = [
   { value: 'cash', label: 'Tunai', icon: <Banknote className="size-5" /> },
   { value: 'qris', label: 'QRIS', icon: <QrCode className="size-5" /> },
   { value: 'transfer', label: 'Transfer', icon: <ArrowLeftRight className="size-5" /> },
@@ -95,6 +111,8 @@ const PAYMENT_METHODS: PaymentMethodOption[] = [
   { value: 'credit', label: 'Kredit', icon: <CreditCard className="size-5" /> },
   { value: 'ewallet', label: 'E-Wallet', icon: <Smartphone className="size-5" /> },
 ];
+
+const PAYMENT_METHODS = FALLBACK_METHODS; // kept for split payment & receipt label lookup
 
 const QUICK_CASH_AMOUNTS = [50000, 100000, 200000, 500000];
 
@@ -309,6 +327,56 @@ export default function POSPage() {
 
   const heldTransactions = Array.isArray(heldTransactionsRaw) ? heldTransactionsRaw : [];
 
+  // Fetch payment methods from database
+  interface DbPaymentMethod {
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    isDefault: boolean;
+    logo?: string | null;
+    bankName?: string | null;
+    accountNumber?: string | null;
+    accountHolder?: string | null;
+    phone?: string | null;
+    provider?: string | null;
+    merchantName?: string | null;
+    merchantId?: string | null;
+    qrImage?: string | null;
+    instructions?: string | null;
+  }
+
+  const { data: dbPaymentMethodsRaw = [] } = useQuery<DbPaymentMethod[]>({
+    queryKey: ['pos-payment-methods'],
+    queryFn: async () => {
+      const res = await fetch('/api/payment-methods?status=active');
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json.data) ? json.data : [];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const dbPaymentMethods = Array.isArray(dbPaymentMethodsRaw) ? dbPaymentMethodsRaw : [];
+
+  // Build payment method options from DB, fallback to hardcoded
+  const paymentMethodOptions: PaymentMethodOption[] = useMemo(() => {
+    if (dbPaymentMethods.length === 0) return FALLBACK_METHODS;
+    return dbPaymentMethods
+      .sort((a, b) => (a.isDefault === b.isDefault ? (a.sortOrder ?? 0) - (b.sortOrder ?? 0) : a.isDefault ? -1 : 1))
+      .map((m) => ({
+        value: m.type,
+        label: m.name,
+        icon: TYPE_ICONS[m.type] || <CircleDollarSign className="size-5" />,
+      }));
+  }, [dbPaymentMethods]);
+
+  // Get full details of the currently selected payment method
+  const selectedMethodDetail = useMemo(() => {
+    if (dbPaymentMethods.length === 0) return null;
+    return dbPaymentMethods.find((m) => m.type === selectedPaymentMethod) || null;
+  }, [dbPaymentMethods, selectedPaymentMethod]);
+
   // Sync tax & SC config from server
   useEffect(() => {
     if (taxData) {
@@ -382,8 +450,7 @@ export default function POSPage() {
         resetPaymentState();
         queryClient.invalidateQueries({ queryKey: ['pos-products'] });
         queryClient.invalidateQueries({ queryKey: ['held-transactions'] });
-        
-               // Invalidate report/traffic/dashboard queries so Laporan is always up-to-date
+        // Invalidate report/traffic/dashboard queries so Laporan is always up-to-date
         queryClient.invalidateQueries({ queryKey: ['dashboard'] });
         queryClient.invalidateQueries({ queryKey: ['transactions'] });
         queryClient.invalidateQueries({
@@ -392,7 +459,6 @@ export default function POSPage() {
             return key.startsWith('report-') || key.startsWith('traffic-');
           },
         });
-
       }, 1200);
     },
     onError: (error: Error) => {
@@ -1364,7 +1430,7 @@ export default function POSPage() {
                 Metode Pembayaran
               </Label>
               <div className="grid grid-cols-3 gap-2">
-                {PAYMENT_METHODS.map((method) => (
+                {paymentMethodOptions.map((method) => (
                   <Button
                     key={method.value}
                     variant={selectedPaymentMethod === method.value ? 'default' : 'outline'}
@@ -1518,6 +1584,120 @@ export default function POSPage() {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Payment Details for non-cash methods */}
+            {selectedMethodDetail && selectedPaymentMethod !== 'cash' && paymentSplits.length === 0 && (
+              <motion.div
+                {...scaleIn}
+                className="space-y-3 rounded-lg border p-3"
+              >
+                {selectedPaymentMethod === 'transfer' && (
+                  <>
+                    <div className="flex items-center gap-3">
+                      {selectedMethodDetail.logo ? (
+                        <img src={selectedMethodDetail.logo} alt={selectedMethodDetail.bankName || ''} className="h-8 w-auto object-contain rounded" />
+                      ) : (
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                          <Landmark className="size-4 text-blue-600 dark:text-blue-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold">{selectedMethodDetail.bankName || 'Transfer Bank'}</p>
+                        {selectedMethodDetail.accountHolder && (
+                          <p className="text-xs text-muted-foreground">a.n. {selectedMethodDetail.accountHolder}</p>
+                        )}
+                      </div>
+                    </div>
+                    {selectedMethodDetail.accountNumber && (
+                      <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2">
+                        <span className="text-sm font-mono tracking-wider">{selectedMethodDetail.accountNumber}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedMethodDetail.accountNumber!);
+                            toast.success('Nomor rekening disalin');
+                          }}
+                        >
+                          <Copy className="size-3" />
+                          Salin
+                        </Button>
+                      </div>
+                    )}
+                    {selectedMethodDetail.instructions && (
+                      <p className="text-xs text-muted-foreground leading-relaxed">{selectedMethodDetail.instructions}</p>
+                    )}
+                  </>
+                )}
+                {selectedPaymentMethod === 'qris' && (
+                  <>
+                    {selectedMethodDetail.qrImage && (
+                      <div className="flex justify-center">
+                        <img src={selectedMethodDetail.qrImage} alt="QRIS" className="h-40 w-40 rounded-lg border object-contain p-1" />
+                      </div>
+                    )}
+                    {selectedMethodDetail.merchantName && (
+                      <p className="text-center text-sm font-medium">{selectedMethodDetail.merchantName}</p>
+                    )}
+                    <p className="text-center text-xs text-muted-foreground">
+                      Scan kode QR menggunakan aplikasi e-wallet atau mobile banking Anda
+                    </p>
+                  </>
+                )}
+                {selectedPaymentMethod === 'ewallet' && (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                        <Smartphone className="size-4 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold">{selectedMethodDetail.provider || 'E-Wallet'}</p>
+                      </div>
+                    </div>
+                    {selectedMethodDetail.phone && (
+                      <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2">
+                        <span className="text-sm font-mono">{selectedMethodDetail.phone}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedMethodDetail.phone!);
+                            toast.success('Nomor HP disalin');
+                          }}
+                        >
+                          <Copy className="size-3" />
+                          Salin
+                        </Button>
+                      </div>
+                    )}
+                    {selectedMethodDetail.qrImage && (
+                      <div className="flex justify-center">
+                        <img src={selectedMethodDetail.qrImage} alt="QR" className="h-32 w-32 rounded-lg border object-contain p-1" />
+                      </div>
+                    )}
+                  </>
+                )}
+                {selectedPaymentMethod === 'virtual_account' && selectedMethodDetail.accountNumber && (
+                  <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2">
+                    <span className="text-sm font-mono tracking-wider">{selectedMethodDetail.accountNumber}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedMethodDetail.accountNumber!);
+                        toast.success('Nomor VA disalin');
+                      }}
+                    >
+                      <Copy className="size-3" />
+                      Salin
+                    </Button>
+                  </div>
+                )}
+              </motion.div>
             )}
 
             {/* Customer Selection (Optional) */}

@@ -500,6 +500,55 @@ async function main() {
   })
   console.log('  ✅ Service charge setting created (5%, disabled)')
 
+  // ==================== 8.5 PAYMENT METHODS ====================
+  console.log('💳 Creating default payment methods...')
+  await prisma.paymentMethod.createMany({
+    data: [
+      {
+        name: 'Tunai',
+        type: 'cash',
+        description: 'Pembayaran tunai langsung di kasir',
+        status: 'active',
+        isDefault: true,
+        sortOrder: 1,
+      },
+      {
+        name: 'QRIS',
+        type: 'qris',
+        description: 'Pembayaran via scan QRIS',
+        status: 'active',
+        isDefault: false,
+        sortOrder: 2,
+        merchantName: 'Toko Sejahtera',
+        instructions: 'Scan kode QR menggunakan aplikasi e-wallet atau mobile banking Anda.',
+      },
+      {
+        name: 'Transfer BCA',
+        type: 'transfer',
+        description: 'Transfer melalui rekening BCA',
+        status: 'active',
+        isDefault: false,
+        sortOrder: 3,
+        bankName: 'BCA',
+        accountNumber: '123-456-7890',
+        accountHolder: 'PT Toko Sejahtera',
+        branch: 'KCP Kelapa Gading',
+        instructions: 'Transfer ke rekening BCA. Konfirmasi melalui struk transfer.',
+      },
+      {
+        name: 'E-Wallet GoPay',
+        type: 'ewallet',
+        description: 'Pembayaran menggunakan GoPay',
+        status: 'active',
+        isDefault: false,
+        sortOrder: 4,
+        provider: 'GoPay',
+        phone: '081234567890',
+      },
+    ],
+  })
+  console.log('  ✅ 4 default payment methods created')
+
   // ==================== 9. STORE SETTINGS ====================
   console.log('🏪 Creating store settings...')
   const storeSettings = [
