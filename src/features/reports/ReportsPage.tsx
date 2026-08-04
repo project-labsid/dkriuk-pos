@@ -66,6 +66,14 @@ import {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Format a Date to YYYY-MM-DD using LOCAL timezone (not UTC). */
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('id-ID', {
     day: '2-digit',
@@ -78,8 +86,8 @@ function getDefaultDates() {
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
   return {
-    start: firstDay.toISOString().split('T')[0],
-    end: now.toISOString().split('T')[0],
+    start: toLocalDateStr(firstDay),
+    end: toLocalDateStr(now),
   };
 }
 
@@ -128,7 +136,7 @@ function DateRangeFilter({
     size="sm"
     variant="outline"
     onClick={() => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateStr(new Date());
       onStartChange(today);
       onEndChange(today);
     }}
@@ -225,7 +233,7 @@ function PenjualanTab() {
     if (!data?.transactions) return [];
     const grouped: Record<string, { date: string; transactions: number; revenue: number }> = {};
     for (const tx of data.transactions) {
-      const day = new Date(tx.createdAt).toISOString().split('T')[0];
+      const day = toLocalDateStr(new Date(tx.createdAt));
       if (!grouped[day]) grouped[day] = { date: day, transactions: 0, revenue: 0 };
       grouped[day].transactions += 1;
       grouped[day].revenue += tx.grandTotal;
@@ -657,7 +665,7 @@ function LabaRugiTab() {
     if (!dailyData?.transactions) return [];
     const grouped: Record<string, { date: string; laba: number; hpp: number }> = {};
     for (const tx of dailyData.transactions) {
-      const day = new Date(tx.createdAt).toISOString().split('T')[0];
+      const day = toLocalDateStr(new Date(tx.createdAt));
       if (!grouped[day]) grouped[day] = { date: day, laba: 0, hpp: 0 };
       const cost = tx.items?.reduce((s: number, item: { costPrice: number; quantity: number }) => s + item.costPrice * item.quantity, 0) ?? 0;
       grouped[day].laba += tx.grandTotal - cost;
@@ -1067,9 +1075,9 @@ function StokTab() {
 
 function TrafficTab() {
   // Daily traffic: transactions per hour today
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toLocalDateStr(new Date());
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const monthStart = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
 
   const { data: dailyData, isLoading: dailyLoading } = useQuery({
     queryKey: ['traffic-daily', todayStr],
@@ -1165,7 +1173,7 @@ function TrafficTab() {
 
   const monthLabel = useMemo(() => now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }), []);
 
-  const getExportData = useCallback(() => {
+  const getExportData = () => {
     const columns = ['Tanggal', 'Transaksi', 'Pendapatan'];
     const rows = dailyMonthlyData
       .filter((d) => d.transaksi > 0)
@@ -1178,22 +1186,22 @@ function TrafficTab() {
       'Pendapatan Bulan Ini': formatRupiah(monthTotalRevenue),
     };
     return { title: 'Traffic Report', subtitle: 'Bulan ' + monthLabel, columns, rows, summary: summaryObj };
-  }, [dailyMonthlyData, todayTotalTx, todayTotalRevenue, peakHour, monthTotalTx, monthTotalRevenue, monthLabel]);
+  };
 
-  const handleExcel = useCallback(() => {
+  const handleExcel = () => {
     const { title, columns, rows } = getExportData();
     exportToExcel({ sheetName: title, columns, rows });
-  }, [getExportData]);
+  };
 
-  const handlePrintA4 = useCallback(() => {
+  const handlePrintA4 = () => {
     const { title, subtitle, columns, rows, summary } = getExportData();
     printReport({ title, subtitle, columns, rows, summary });
-  }, [getExportData]);
+  };
 
-  const handlePrintThermal = useCallback(() => {
+  const handlePrintThermal = () => {
     const { title, columns, rows, summary } = getExportData();
     printThermal({ storeName: STORE_NAME, title, columns, rows, summary });
-  }, [getExportData]);
+  };
 
   return (
     <div className="space-y-4">
